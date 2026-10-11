@@ -53,7 +53,7 @@ static void Dump(SaneOption o)
 	Console.WriteLine($"      type={o.Type} unit={o.Unit} size={o.Size} caps={o.Capabilities}");
 
 	if (o.Range is { } r) {
-		Console.WriteLine($"      range: {r.Min:G}..{r.Max:G} step {r.Step:G}");
+		Console.WriteLine($"      range: {r.Min:G}..{r.Max:G}{(r.Step == 0 ? "" : $" step {r.Step:G}")}");
 	}
 
 	if (o.NumberList is { } nums) {

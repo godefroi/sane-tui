@@ -6,7 +6,7 @@ WORKDIR /src
 COPY sane-tui.slnx ./
 COPY src/SaneTui/SaneTui.csproj src/SaneTui/
 COPY tests/SaneTui.Tests/SaneTui.Tests.csproj tests/SaneTui.Tests/
-COPY tools/SaneTui.Dump/SaneTui.Dump.csproj tools/SaneTui.Dump/
+COPY src/SaneTui.Dump/SaneTui.Dump.csproj src/SaneTui.Dump/
 RUN dotnet restore
 COPY . .
 RUN dotnet build --no-restore

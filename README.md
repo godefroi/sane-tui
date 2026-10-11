@@ -10,7 +10,7 @@ Status: early. The library can enumerate devices, open them, and read every opti
 |------|------|
 | `src/SaneTui` | The SANE library (`SaneLibrary`, `SaneDevice`, `SaneOption`). P/Invoke to `libsane.so.1`, no other dependencies. |
 | `tests/SaneTui.Tests` | TUnit tests (Microsoft.Testing.Platform) against SANE's virtual `test` backend. |
-| `tools/SaneTui.Dump` | Prints every option of every device, for comparing what different backends expose. |
+| `src/SaneTui.Dump` | Prints every option of every device, for comparing what different backends expose. |
 
 Targets .NET 10. Linux only, since SANE is.
 
@@ -21,9 +21,9 @@ Targets .NET 10. Linux only, since SANE is.
 ## Dumping a scanner's options
 
 ```sh
-dotnet run --project tools/SaneTui.Dump             # every device SANE can see
-dotnet run --project tools/SaneTui.Dump -- test     # a specific device (here, the virtual test backend)
-dotnet run --project tools/SaneTui.Dump -- 'net:host:epsonds:libusb:001:004'
+dotnet run --project src/SaneTui.Dump             # every device SANE can see
+dotnet run --project src/SaneTui.Dump -- test     # a specific device (here, the virtual test backend)
+dotnet run --project src/SaneTui.Dump -- 'net:host:epsonds:libusb:001:004'
 ```
 
 ## Tests

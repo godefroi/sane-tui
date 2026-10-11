@@ -57,7 +57,10 @@ public sealed class SaneException(SaneStatus status, string message) : Exception
 
 public sealed record SaneDeviceInfo(string Name, string Vendor, string Model, string Type);
 
-/// <summary>Numeric limits of an option. Integer options use the same type; their bounds are whole numbers.</summary>
+/// <summary>
+/// Numeric limits of an option. Integer options use the same type; their bounds are whole numbers.
+/// A <see cref="Step"/> of 0 means any value in the range is allowed.
+/// </summary>
 public sealed record SaneRange(double Min, double Max, double Step);
 
 /// <summary>
