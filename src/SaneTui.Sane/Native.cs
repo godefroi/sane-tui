@@ -30,7 +30,40 @@ internal static unsafe partial class Native
 	public static partial SaneStatus sane_control_option(nint handle, int n, SaneAction action, void* value, out int info);
 
 	[LibraryImport(Lib)]
+	public static partial SaneStatus sane_start(nint handle);
+
+	[LibraryImport(Lib)]
+	public static partial SaneStatus sane_get_parameters(nint handle, out NativeParameters parameters);
+
+	[LibraryImport(Lib)]
+	public static partial SaneStatus sane_read(nint handle, byte* buffer, int maxLength, out int length);
+
+	// the one call that is allowed from another thread while the worker is blocked in sane_read
+	[LibraryImport(Lib)]
+	public static partial void sane_cancel(nint handle);
+
+	[LibraryImport(Lib)]
 	public static partial nint sane_strstatus(SaneStatus status);
+}
+
+internal enum SaneFrameFormat
+{
+	Gray = 0,
+	Rgb = 1,
+	Red = 2,
+	Green = 3,
+	Blue = 4,
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeParameters
+{
+	public SaneFrameFormat Format;
+	public int LastFrame;
+	public int BytesPerLine;
+	public int PixelsPerLine;
+	public int Lines; // -1 when unknown (hand scanners)
+	public int Depth;
 }
 
 internal enum SaneAction

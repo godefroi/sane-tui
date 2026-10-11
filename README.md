@@ -2,7 +2,7 @@
 
 A terminal UI for scanning documents on Linux (think Skanlite or SimpleScan, but in the terminal), built on a .NET library that talks to [SANE](http://www.sane-project.org/) directly. The library is meant to be useful on its own.
 
-Status: early. The library can enumerate devices, open them, and read every option with its constraints and current value. Setting options and scanning are next. The TUI is a stub that lists the scanners it finds.
+Status: early. The library can enumerate devices, open them, read and set options, and scan pages (single, or a whole document feeder). The TUI is a stub that lists the scanners it finds.
 
 ## Layout
 
