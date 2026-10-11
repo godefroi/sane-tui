@@ -5,5 +5,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SaneTui.Sane.Tests/SaneTui.Sane.Tests.csproj" />
+    <Project Path="tests/SaneTui.Tests/SaneTui.Tests.csproj" />
   </Folder>
 </Solution>

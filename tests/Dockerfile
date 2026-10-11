@@ -7,6 +7,7 @@ COPY sane-tui.slnx ./
 COPY src/SaneTui.Sane/SaneTui.Sane.csproj src/SaneTui.Sane/
 COPY src/SaneTui/SaneTui.csproj src/SaneTui/
 COPY tests/SaneTui.Sane.Tests/SaneTui.Sane.Tests.csproj tests/SaneTui.Sane.Tests/
+COPY tests/SaneTui.Tests/SaneTui.Tests.csproj tests/SaneTui.Tests/
 RUN dotnet restore
 COPY . .
 RUN dotnet build --no-restore

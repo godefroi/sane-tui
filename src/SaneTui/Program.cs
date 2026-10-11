@@ -8,14 +8,18 @@ var devicesArgument = new Argument<string[]>("device") {
 
 var dump = new Command("dump", "Print every option of each device, to compare what different backends expose.") { devicesArgument };
 
-dump.SetAction((parseResult, cancellationToken) => DumpCommand.RunAsync(parseResult.GetValue(devicesArgument) ?? [], cancellationToken));
+dump.SetAction((parseResult, cancellationToken) => DiagCommand.GuardAsync(() => DumpCommand.RunAsync(parseResult.GetValue(devicesArgument) ?? [], cancellationToken)));
 
-var root = new RootCommand("Scan documents with SANE from the terminal. With no command, starts the interactive UI.") { dump };
+var diag = new Command("diag", "Check that libsane loads, list the scanners SANE finds, and point out USB devices that look like scanners but weren't claimed.");
 
-root.SetAction(async (_, cancellationToken) => {
+diag.SetAction(_ => DiagCommand.RunAsync());
+
+var root = new RootCommand("Scan documents with SANE from the terminal. With no command, starts the interactive UI.") { diag, dump };
+
+root.SetAction((_, cancellationToken) => DiagCommand.GuardAsync(async () => {
 	await Tui.RunAsync(cancellationToken);
 
 	return 0;
-});
+}));
 
 return await root.Parse(args).InvokeAsync();

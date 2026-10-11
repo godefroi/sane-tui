@@ -10,12 +10,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Magick.NET-Q16-AnyCPU" Version="15.0.0" />
     <PackageReference Include="System.CommandLine" Version="2.0.12" />
     <PackageReference Include="Terminal.Gui" Version="2.5.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SaneTui.Sane\SaneTui.Sane.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SaneTui.Tests" />
   </ItemGroup>
 
 </Project>
