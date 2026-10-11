@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\SaneTui\SaneTui.csproj" />
+    <ProjectReference Include="..\..\src\SaneTui.Sane\SaneTui.Sane.csproj" />
   </ItemGroup>
 
 </Project>

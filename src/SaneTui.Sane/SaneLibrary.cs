@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace SaneTui;
+namespace SaneTui.Sane;
 
 /// <summary>
 /// A handle on the process-wide SANE session. sane_init/sane_exit and the backends' state are global to the process,

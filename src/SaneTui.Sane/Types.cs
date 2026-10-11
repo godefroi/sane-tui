@@ -1,4 +1,4 @@
-namespace SaneTui;
+namespace SaneTui.Sane;
 
 public enum SaneStatus
 {

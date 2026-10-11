@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace SaneTui;
+namespace SaneTui.Sane;
 
 /// <summary>
 /// Runs every SANE call on one dedicated thread. Backends aren't documented as thread-safe and

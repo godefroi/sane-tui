@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace SaneTui;
+namespace SaneTui.Sane;
 
 // ponytail: Linux only. libsane.so.1 is the SONAME there; add a NativeLibrary resolver if macOS matters.
 // The authorize callback is not wired up (passed as NULL), so backends that need credentials will fail to open.

@@ -1,4 +1,4 @@
-namespace SaneTui.Tests;
+namespace SaneTui.Sane.Tests;
 
 // Runs against SANE's virtual "test" backend, so it needs libsane (Linux). See tests/Dockerfile.
 public class SaneTestBackendTests

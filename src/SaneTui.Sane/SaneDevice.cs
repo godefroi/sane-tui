@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using static SaneTui.SaneLibrary;
+using static SaneTui.Sane.SaneLibrary;
 
-namespace SaneTui;
+namespace SaneTui.Sane;
 
 public sealed class SaneDevice : IAsyncDisposable
 {
