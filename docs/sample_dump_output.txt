@@ -1,0 +1,247 @@
+[root@5659a84b76fd sane-tui]# dotnet run --project tools/SaneTui.Dump/
+SANE 1.4.0
+2 device(s) found:
+  plustek:libusb:001:007  (Canon CanoScan N650U/N656U, flatbed scanner)
+  epsonds:libusb:002:004  (Epson ES-400, ESC/I-2)
+
+==== plustek:libusb:001:007 ====
+
+-- Scan Mode --
+[  2] mode: Scan mode
+      type=String unit=None size=8 caps=SoftSelect, SoftDetect
+      one of: Lineart | Gray | Color
+      value: Color
+      Selects the scan mode (e.g., lineart, monochrome, or color).
+[  3] depth: Bit depth
+      type=Int unit=Bit size=4 caps=SoftSelect, SoftDetect
+      one of: 8, 14
+      value: 8
+      Number of bits per sample, typical values are 1 for "line-art" and 8 for multibit scans.
+[  4] source: Scan source
+      type=String unit=None size=13 caps=SoftSelect, SoftDetect, Inactive
+      one of: Normal | Transparency | Negative
+      Selects the scan source (such as a document-feeder).
+[  5] resolution: Scan resolution
+      type=Int unit=Dpi size=4 caps=SoftSelect, SoftDetect
+      range: 50..1200 step 0
+      value: 50
+      Sets the resolution of the scanned image.
+[  6] preview: Preview
+      type=Bool unit=None size=4 caps=SoftSelect, SoftDetect
+      value: False
+      Request a preview-quality scan.
+
+-- Geometry --
+[  8] tl-x: Top-left x
+      type=Fixed unit=Millimeter size=4 caps=SoftSelect, SoftDetect
+      range: 0..215 step 0
+      value: 0
+      Top-left x position of scan area.
+[  9] tl-y: Top-left y
+      type=Fixed unit=Millimeter size=4 caps=SoftSelect, SoftDetect
+      range: 0..297 step 0
+      value: 0
+      Top-left y position of scan area.
+[ 10] br-x: Bottom-right x
+      type=Fixed unit=Millimeter size=4 caps=SoftSelect, SoftDetect
+      range: 0..215 step 0
+      value: 103
+      Bottom-right x position of scan area.
+[ 11] br-y: Bottom-right y
+      type=Fixed unit=Millimeter size=4 caps=SoftSelect, SoftDetect
+      range: 0..297 step 0
+      value: 76.20999145507812
+      Bottom-right y position of scan area.
+
+-- Enhancement --
+[ 13] brightness: Brightness
+      type=Fixed unit=Percent size=4 caps=SoftSelect, SoftDetect
+      range: -100..100 step 1
+      value: 0
+      Controls the brightness of the acquired image.
+[ 14] contrast: Contrast
+      type=Fixed unit=Percent size=4 caps=SoftSelect, SoftDetect
+      range: -100..100 step 1
+      value: 0
+      Controls the contrast of the acquired image.
+[ 15] custom-gamma: Use custom gamma table
+      type=Bool unit=None size=4 caps=SoftSelect, SoftDetect
+      value: False
+      Determines whether a builtin or a custom gamma-table should be used.
+[ 16] gamma-table: Image intensity
+      type=Int unit=None size=16384 caps=SoftSelect, SoftDetect, Inactive
+      range: 0..255 step 0
+      Gamma-correction table.  In color mode this option equally affects the red, green, and blue channels simultaneously (i.e., it is an intensity gamma table).
+[ 17] red-gamma-table: Red intensity
+      type=Int unit=None size=16384 caps=SoftSelect, SoftDetect, Inactive
+      range: 0..255 step 0
+      Gamma-correction table for the red band.
+[ 18] green-gamma-table: Green intensity
+      type=Int unit=None size=16384 caps=SoftSelect, SoftDetect, Inactive
+      range: 0..255 step 0
+      Gamma-correction table for the green band.
+[ 19] blue-gamma-table: Blue intensity
+      type=Int unit=None size=16384 caps=SoftSelect, SoftDetect, Inactive
+      range: 0..255 step 0
+      Gamma-correction table for the blue band.
+
+-- Device-Settings --
+[ 21] lamp-switch: Lampswitch
+      type=Bool unit=None size=4 caps=SoftSelect, SoftDetect
+      value: False
+      Manually switching the lamp(s).
+[ 22] lampoff-time: Lampoff-time
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: 0..999 step 1
+      value: 300
+      Lampoff-time in seconds.
+[ 23] lamp-off-at-exit: Lamp off at exit
+      type=Bool unit=None size=4 caps=SoftSelect, SoftDetect
+      value: True
+      Turn off lamp when program exits
+[ 24] warmup-time: Warmup-time
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect, Inactive
+      range: -1..999 step 1
+      Warmup-time in seconds.
+[ 25] lamp-off-during-dcal: Lamp off during dark calibration
+      type=Bool unit=None size=4 caps=SoftSelect, SoftDetect
+      value: False
+      Always switches lamp off when doing dark calibration.
+[ 26] calibration-cache: Calibration data cache
+      type=Bool unit=None size=4 caps=SoftSelect, SoftDetect
+      value: False
+      Enables or disables calibration data cache.
+[ 27] speedup-switch: Speedup sensor
+      type=Bool unit=None size=4 caps=SoftSelect, SoftDetect, Inactive
+      Enables or disables speeding up sensor movement.
+[ 28] calibrate: Calibrate
+      type=Button unit=None size=4 caps=SoftSelect, SoftDetect, Automatic, Inactive
+      Performs calibration
+
+-- Analog frontend --
+[ 30] red-gain: Red gain
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: -1..63 step 1
+      value: -1
+      Red gain value of the AFE
+[ 31] green-gain: Green gain
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: -1..63 step 1
+      value: -1
+      Green gain value of the AFE
+[ 32] blue-gain: Blue gain
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: -1..63 step 1
+      value: -1
+      Blue gain value of the AFE
+[ 33] red-offset: Red offset
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: -1..63 step 1
+      value: -1
+      Red offset value of the AFE
+[ 34] green-offset: Green offset
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: -1..63 step 1
+      value: -1
+      Green offset value of the AFE
+[ 35] blue-offset: Blue offset
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: -1..63 step 1
+      value: -1
+      Blue offset value of the AFE
+[ 36] redlamp-off: Red lamp off
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: -1..16363 step 1
+      value: -1
+      Defines red lamp off parameter
+[ 37] greenlamp-off: Green lamp off
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: -1..16363 step 1
+      value: -1
+      Defines green lamp off parameter
+[ 38] bluelamp-off: Blue lamp off
+      type=Int unit=None size=4 caps=SoftSelect, SoftDetect
+      range: -1..16363 step 1
+      value: -1
+      Defines blue lamp off parameter
+
+-- Buttons --
+[ 40] button 0: Scanner button 0
+      type=Bool unit=None size=4 caps=HardSelect, SoftDetect, Advanced
+      value: False
+      This option reflects the status of the scanner buttons.
+[ 41] button 1: Scanner button 1
+      type=Bool unit=None size=4 caps=HardSelect, SoftDetect, Inactive, Advanced
+      This option reflects the status of the scanner buttons.
+[ 42] button 2: Scanner button 2
+      type=Bool unit=None size=4 caps=HardSelect, SoftDetect, Inactive, Advanced
+      This option reflects the status of the scanner buttons.
+[ 43] button 3: Scanner button 3
+      type=Bool unit=None size=4 caps=HardSelect, SoftDetect, Inactive, Advanced
+      This option reflects the status of the scanner buttons.
+[ 44] button 4: Scanner button 4
+      type=Bool unit=None size=4 caps=HardSelect, SoftDetect, Inactive, Advanced
+      This option reflects the status of the scanner buttons.
+
+==== epsonds:libusb:002:004 ====
+
+-- Standard --
+[  2] source: Scan source
+      type=String unit=None size=11 caps=SoftSelect, SoftDetect
+      one of: ADF Front | ADF Duplex
+      value: ADF Front
+      Selects the scan source (such as a document-feeder).
+[  3] mode: Scan mode
+      type=String unit=None size=8 caps=SoftSelect, SoftDetect
+      one of: Lineart | Gray | Color
+      value: Color
+      Selects the scan mode (e.g., lineart, monochrome, or color).
+[  4] depth: Bit depth
+      type=Int unit=Bit size=4 caps=SoftSelect, SoftDetect
+      one of: 1, 8
+      value: 8
+      Number of bits per sample, typical values are 1 for "line-art" and 8 for multibit scans.
+[  5] resolution: Scan resolution
+      type=Int unit=Dpi size=4 caps=SoftSelect, SoftDetect
+      one of: 50, 75, 100, 150, 200, 240, 300, 360, 400, 600
+      value: 50
+      Sets the resolution of the scanned image.
+
+-- Geometry --
+[  7] tl-x: Top-left x
+      type=Fixed unit=Millimeter size=4 caps=SoftSelect, SoftDetect
+      range: 0..215.89999389648438 step 0
+      value: 0
+      Top-left x position of scan area.
+[  8] tl-y: Top-left y
+      type=Fixed unit=Millimeter size=4 caps=SoftSelect, SoftDetect
+      range: 0..393.6999969482422 step 0
+      value: 0
+      Top-left y position of scan area.
+[  9] br-x: Bottom-right x
+      type=Fixed unit=Millimeter size=4 caps=SoftSelect, SoftDetect
+      range: 0..215.89999389648438 step 0
+      value: 215.89999389648438
+      Bottom-right x position of scan area.
+[ 10] br-y: Bottom-right y
+      type=Fixed unit=Millimeter size=4 caps=SoftSelect, SoftDetect
+      range: 0..393.6999969482422 step 0
+      value: 393.6999969482422
+      Bottom-right y position of scan area.
+
+-- Optional equipment --
+[ 12] eject: Eject
+      type=Button unit=None size=4 caps=SoftSelect, SoftDetect
+      Eject the sheet in the ADF
+[ 13] load: Load
+      type=Button unit=None size=4 caps=SoftSelect, SoftDetect, Inactive
+      Load a sheet in the ADF
+[ 14] adf-skew: ADF Skew Correction
+      type=Bool unit=None size=4 caps=SoftSelect, SoftDetect
+      value: False
+      Enables ADF skew correction
+[ 15] adf-crp: ADF CRP Correction
+      type=Bool unit=None size=4 caps=SoftSelect, SoftDetect
+      value: False
+      Enables ADF auto cropping
+[root@5659a84b76fd sane-tui]#
