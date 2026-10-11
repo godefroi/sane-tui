@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SaneTui/SaneTui.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SaneTui.Tests/SaneTui.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SaneTui.Dump/SaneTui.Dump.csproj" />
+  </Folder>
+</Solution>
