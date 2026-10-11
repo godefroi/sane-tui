@@ -163,6 +163,13 @@ public enum SanePixelFormat
 /// <param name="Data">The pixels: <c>Stride * Height</c> bytes.</param>
 public sealed record SaneImage(int Width, int Height, SanePixelFormat Format, int Depth, int Stride, ReadOnlyMemory<byte> Data);
 
+/// <summary>The part of the scanner's bed (or the paper) that gets scanned, in millimeters from the top-left corner.</summary>
+/// <param name="X">Distance from the left edge to the left side of the area.</param>
+/// <param name="Y">Distance from the top edge to the top of the area.</param>
+/// <param name="Width">Width of the area.</param>
+/// <param name="Height">Height of the area.</param>
+public sealed record SaneScanArea(double X, double Y, double Width, double Height);
+
 /// <summary>A SANE operation failed. <see cref="Status"/> says how.</summary>
 /// <param name="status">The driver's result code.</param>
 /// <param name="message">A description that includes the status and SANE's own explanation of it.</param>

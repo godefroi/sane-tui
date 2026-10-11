@@ -85,6 +85,73 @@ public class SaneScanTests
 	}
 
 	[Test]
+	public async Task SetScanArea_WithoutArguments_SelectsTheFullDeviceArea()
+	{
+		var (sane, device) = await OpenAsync();
+
+		await using var _ = sane;
+		await using var __ = device;
+
+		var area = await device.SetScanAreaAsync();
+
+		await Assert.That(area.X).IsEqualTo(0d);
+		await Assert.That(area.Y).IsEqualTo(0d);
+		await Assert.That(area.Width).IsEqualTo(device.GetOption("br-x").Range!.Max);
+		await Assert.That(area.Height).IsEqualTo(device.GetOption("br-y").Range!.Max);
+	}
+
+	[Test]
+	public async Task SetScanArea_ProducesAnImageOfThatSize()
+	{
+		var (sane, device) = await OpenAsync();
+
+		await using var _ = sane;
+		await using var __ = device;
+
+		await Set(device, "resolution", 100);
+
+		var area = await device.SetScanAreaAsync(width: 50, height: 30, x: 10, y: 5);
+
+		await Assert.That(area.X).IsEqualTo(10d).Within(0.01);
+		await Assert.That(area.Y).IsEqualTo(5d).Within(0.01);
+		await Assert.That(area.Width).IsEqualTo(50d).Within(0.01);
+		await Assert.That(area.Height).IsEqualTo(30d).Within(0.01);
+
+		// 50 mm and 30 mm at 100 dpi, give or take a pixel of rounding
+		var image = await device.ScanAsync();
+
+		await Assert.That(image.Width).IsBetween(195, 199); // 196.9
+		await Assert.That(image.Height).IsBetween(117, 120); // 118.1
+	}
+
+	[Test]
+	public async Task SetScanArea_LargerThanTheDevice_IsClamped()
+	{
+		var (sane, device) = await OpenAsync();
+
+		await using var _ = sane;
+		await using var __ = device;
+
+		var area = await device.SetScanAreaAsync(width: 100_000, height: 100_000);
+
+		await Assert.That(area.Width).IsEqualTo(device.GetOption("br-x").Range!.Max);
+		await Assert.That(area.Height).IsEqualTo(device.GetOption("br-y").Range!.Max);
+	}
+
+	[Test]
+	public async Task SetScanArea_RejectsNonPositiveSizesAndPositionsOutsideTheDevice()
+	{
+		var (sane, device) = await OpenAsync();
+
+		await using var _ = sane;
+		await using var __ = device;
+
+		await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await device.SetScanAreaAsync(width: 0));
+		await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await device.SetScanAreaAsync(x: -1));
+		await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await device.SetScanAreaAsync(x: 100_000));
+	}
+
+	[Test]
 	public async Task Scan_Gray8()
 	{
 		var (sane, device) = await OpenAsync();
