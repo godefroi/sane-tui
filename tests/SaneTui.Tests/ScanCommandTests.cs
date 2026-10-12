@@ -268,6 +268,39 @@ public class ScanCommandTests
 	}
 
 	[Test]
+	public async Task LeftAndTop_StartTheAreaAwayFromTheCorner_AndTheMessageSaysSo()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+		var output = Path.Combine(dir.Path, "scan.jpg");
+		var request = Request(output, resolution: 100, width: 50, height: 30) with { Left = 10, Top = 5 };
+
+		var (exitCode, log) = await Run(request);
+
+		await Assert.That(exitCode).IsEqualTo(0);
+		await Assert.That(log).Contains("50 x 30 mm, 10 mm from the left and 5 mm from the top at 100 dpi");
+
+		// the size of the area doesn't depend on where it starts
+		using var image = new MagickImage(output);
+
+		await Assert.That((int)image.Width).IsBetween(195, 199);
+		await Assert.That((int)image.Height).IsBetween(117, 120);
+	}
+
+	[Test]
+	public async Task NoOffset_LeavesTheOffsetOutOfTheMessage()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (_, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), resolution: 100, width: 50, height: 30));
+
+		await Assert.That(log).DoesNotContain("from the left");
+	}
+
+	[Test]
 	public async Task NoAreaGiven_ScansTheWholeScanner()
 	{
 		RequireLibsane();

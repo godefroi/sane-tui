@@ -13,7 +13,9 @@ namespace SaneTui;
 /// <param name="Settings">Extra <c>name=value</c> options, applied last.</param>
 /// <param name="Paper">A paper size name (see <see cref="PaperSizes"/>) to use instead of <paramref name="Width"/> and <paramref name="Height"/>.</param>
 /// <param name="IfExists">What to do if the output files are already there. The default refuses, so nothing is ever replaced unasked.</param>
-internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings, string? Paper = null, ExistingFiles IfExists = ExistingFiles.Fail);
+/// <param name="Left">Millimeters from the left edge of the scanner to the left of the area. Only meaningful with a <paramref name="Width"/> and <paramref name="Height"/>.</param>
+/// <param name="Top">Millimeters from the top edge of the scanner to the top of the area.</param>
+internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings, string? Paper = null, ExistingFiles IfExists = ExistingFiles.Fail, double Left = 0, double Top = 0);
 
 internal static class ScanCommand
 {
@@ -87,7 +89,9 @@ internal static class ScanCommand
 						Say(FeederNote);
 					}
 
-					Say($"Scanning with {name}: {area.Width:0.#} x {area.Height:0.#} mm{(dpi is { } d ? $" at {d:G} dpi" : "")}. Many scanners calibrate before the page starts.");
+					var offset = area.X > 0.5 || area.Y > 0.5 ? $", {area.X:0.#} mm from the left and {area.Y:0.#} mm from the top" : "";
+
+					Say($"Scanning with {name}: {area.Width:0.#} x {area.Height:0.#} mm{offset}{(dpi is { } d ? $" at {d:G} dpi" : "")}. Many scanners calibrate before the page starts.");
 
 					if (request.Batch) {
 						var stoppedEarly = false;
@@ -238,7 +242,7 @@ internal static class ScanCommand
 	}
 
 	// Order matters: the source can change which modes and areas exist, and the mode and depth can change what resolutions are allowed.
-	private static async Task<SaneScanArea> ApplyOptionsAsync(SaneDevice device, ScanRequest request, double? width, double? height)
+	internal static async Task<SaneScanArea> ApplyOptionsAsync(SaneDevice device, ScanRequest request, double? width, double? height)
 	{
 		if (request.Source is { } source) {
 			await SetAsync(device, "source", source);
@@ -257,7 +261,7 @@ internal static class ScanCommand
 		SaneScanArea area;
 
 		try {
-			area = await device.SetScanAreaAsync(width, height);
+			area = await device.SetScanAreaAsync(width, height, request.Left, request.Top);
 		} catch (NotSupportedException ex) {
 			throw new CommandException($"Can't choose the scan area on this device: {ex.Message}");
 		} catch (ArgumentOutOfRangeException ex) {
