@@ -3,6 +3,9 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
+# a place to put scans, don't commit this
+scans/
+
 # dotenv files
 .env
 

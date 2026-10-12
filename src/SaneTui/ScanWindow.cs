@@ -2,36 +2,46 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using SaneTui.Sane;
 using Terminal.Gui.App;
+using Terminal.Gui.Configuration;
+using Terminal.Gui.Drawing;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
 namespace SaneTui;
 
 /// <summary>
-/// The main screen: pick a scanner, choose how to scan, press Scan. The choices offered come from what the selected scanner
-/// reports it supports, so a feeder-only scanner isn't offered a flatbed.
+/// The main screen: scan settings across the top, a preview area beneath them, and a short status area at the bottom.
+/// The choices offered come from what the selected scanner reports it supports, so a feeder-only scanner isn't offered a flatbed.
 /// </summary>
 internal sealed class ScanWindow : Window
 {
 	private const string FullArea = "Full area";
-	private const int ControlsAt = 14;
+
+	// the settings panel has two columns: [label, control] on the left, [label, control] on the right
+	private const int LeftLabel = 1;
+	private const int LeftControl = 12;
+	private const int RightLabel = 42;
+	private const int RightControl = 53;
 
 	private readonly IApplication _app;
 	private readonly SaneLibrary _sane;
 	private readonly ObservableCollection<string> _log = [];
+	private readonly string? _errorScheme = SchemeManager.SchemesToSchemeName(Schemes.Error);
 
-	private readonly DropDownList _scanner = new() { X = ControlsAt, Y = 1, Width = Dim.Fill(2), ReadOnly = true };
-	private readonly Label _sourceLabel = new() { X = 1, Y = 3, Text = "Source" };
-	private readonly DropDownList _source = new() { X = ControlsAt, Y = 3, Width = 34, ReadOnly = true };
-	private readonly Label _modeLabel = new() { X = 1, Y = 4, Text = "Mode" };
-	private readonly DropDownList _mode = new() { X = ControlsAt, Y = 4, Width = 34, ReadOnly = true };
-	private readonly DropDownList _resolution = new() { X = ControlsAt, Y = 5, Width = 12, ReadOnly = true };
-	private readonly DropDownList _paper = new() { X = ControlsAt, Y = 6, Width = 20, ReadOnly = true };
-	private readonly TextField _output = new() { X = ControlsAt, Y = 8, Width = Dim.Fill(2), Text = Path.Combine(Environment.CurrentDirectory, "scan.jpg") };
-	private readonly Button _scan = new() { X = 1, Y = 10, Text = "_Scan", IsDefault = true };
-	private readonly Button _quit = new() { Y = 10, Text = "_Quit" };
-	private readonly ProgressBar _bar = new() { X = 1, Y = 12, Width = Dim.Fill(2), Height = 1 };
-	private readonly ListView _logView = new() { X = 1, Y = 14, Width = Dim.Fill(2), Height = Dim.Fill(1) };
+	private readonly DropDownList _scanner = new() { X = LeftControl, Y = 0, Width = Dim.Fill(1), ReadOnly = true };
+	private readonly Label _sourceLabel = new() { X = LeftLabel, Y = 1, Text = "Source" };
+	private readonly DropDownList _source = new() { X = LeftControl, Y = 1, Width = 28, ReadOnly = true };
+	private readonly Label _modeLabel = new() { X = LeftLabel, Y = 2, Text = "Mode" };
+	private readonly DropDownList _mode = new() { X = LeftControl, Y = 2, Width = 28, ReadOnly = true };
+	private readonly DropDownList _resolution = new() { X = RightControl, Y = 1, Width = 10, ReadOnly = true };
+	private readonly DropDownList _paper = new() { X = RightControl, Y = 2, Width = 16, ReadOnly = true };
+	private readonly TextField _output = new() { X = LeftControl, Y = 3, Width = Dim.Fill(1), Text = Path.Combine(Environment.CurrentDirectory, "scan.jpg") };
+	private readonly Button _scan = new() { X = LeftLabel, Y = 5, Text = "_Scan" };
+	private readonly Button _quit = new() { Y = 5, Text = "_Quit" };
+	private readonly Button _showLog = new() { Y = 5, Text = "_Log" };
+	private readonly ProgressBar _bar = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = 1, Visible = false };
+	private readonly Label _earlier = new() { X = 1, Y = 1, Width = Dim.Fill(1), Text = "" };
+	private readonly Label _latest = new() { X = 1, Y = 2, Width = Dim.Fill(1), Text = "" };
 
 	private IReadOnlyList<SaneDeviceInfo> _devices = [];
 	private CancellationTokenSource? _scanning;
@@ -43,20 +53,49 @@ internal sealed class ScanWindow : Window
 		_app = app;
 		_sane = sane;
 
-		Title = "sane-tui (Esc to quit)";
+		Title = "sane-tui  (F4 opens a dropdown, Esc quits)";
+
+		Palette.Register();
+
+		SchemeName = Palette.Main;
 
 		_quit.X = Pos.Right(_scan) + 2;
-		_logView.Source = new ListWrapper<string>(_log);
+		_showLog.X = Pos.Right(_quit) + 2;
 
-		Add(
-			new Label { X = 1, Y = 1, Text = "Scanner" },
-			_scanner,
+		// A frame draws its lines and title in its own scheme, and its contents inherit it. So the frames take the accent
+		// scheme and everything inside sits on a panel with the normal one.
+		FrameView settings = new() { Title = "Scan", X = 0, Y = 0, Width = Dim.Fill(), Height = 8, SchemeName = Palette.Accent };
+		// a plain View can't take focus, and the controls inside it couldn't be reached with the keyboard
+		View settingsBody = new() { Width = Dim.Fill(), Height = Dim.Fill(), SchemeName = Palette.Main, CanFocus = true };
+
+		settings.Add(settingsBody);
+
+		settingsBody.Add(
+			new Label { X = LeftLabel, Y = 0, Text = "Scanner" }, _scanner,
 			_sourceLabel, _source,
 			_modeLabel, _mode,
-			new Label { X = 1, Y = 5, Text = "Resolution" }, _resolution, new Label { X = Pos.Right(_resolution) + 1, Y = 5, Text = "dpi" },
-			new Label { X = 1, Y = 6, Text = "Page size" }, _paper,
-			new Label { X = 1, Y = 8, Text = "Save to" }, _output,
-			_scan, _quit, _bar, _logView);
+			new Label { X = RightLabel, Y = 1, Text = "Resolution" }, _resolution, new Label { X = Pos.Right(_resolution) + 1, Y = 1, Text = "dpi" },
+			new Label { X = RightLabel, Y = 2, Text = "Page size" }, _paper,
+			new Label { X = LeftLabel, Y = 3, Text = "Save to" }, _output,
+			_scan, _quit, _showLog);
+
+		// Fixed height at the bottom: the progress bar (only while scanning) and the last two status messages.
+		View status = new() { X = 0, Y = Pos.AnchorEnd(), Width = Dim.Fill(), Height = 3 };
+
+		status.Add(_bar, _earlier, _latest);
+
+		// The preview will be drawn in here. Until then it says so.
+		FrameView preview = new() { Title = "Preview", X = 0, Y = Pos.Bottom(settings), Width = Dim.Fill(), Height = Dim.Fill(status), SchemeName = Palette.Accent };
+
+		// the preview sits on a darker canvas, like a light table
+		View canvas = new() { Width = Dim.Fill(), Height = Dim.Fill(), SchemeName = Palette.Canvas };
+
+		canvas.Add(new Label { X = Pos.Center(), Y = Pos.Center(), Text = "A preview will appear here." });
+		preview.Add(canvas);
+
+		_earlier.SchemeName = Palette.Muted;
+
+		Add(settings, preview, status);
 
 		SetChoices(_paper, [FullArea, .. PaperSizes.Names.Select(DisplayName)], FullArea);
 
@@ -67,10 +106,11 @@ internal sealed class ScanWindow : Window
 		};
 
 		_scan.Accepted += async (_, _) => await ScanOrCancelAsync();
+		_showLog.Accepted += (_, _) => ShowLog();
 
 		_quit.Accepted += (_, _) => {
 			_scanning?.Cancel();
-			RequestStop();
+			_app.RequestStop();
 		};
 
 		// the first moment the screen is up and handling events; before that, UI updates have nowhere to go
@@ -87,10 +127,35 @@ internal sealed class ScanWindow : Window
 
 	private void OnUi(Action action) => _app.Invoke(action);
 
-	private void Log(string message) => OnUi(() => {
+	// the status area keeps the last two messages; the pop-up log keeps all of them
+	private void Log(string message, bool error = false) => OnUi(() => {
 		_log.Add(message);
-		_logView.MoveEnd();
+
+		_earlier.Text = _latest.Text;
+		_latest.Text = message;
+		_latest.SchemeName = error ? _errorScheme : null;
 	});
+
+	private void ShowLog()
+	{
+		using Dialog dialog = new() { Title = "Log", Width = Dim.Percent(85), Height = Dim.Percent(70), SchemeName = Palette.Accent };
+
+		// the frame takes the accent for its lines and title; the contents sit on the normal scheme
+		View body = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(), SchemeName = Palette.Main, CanFocus = true };
+		ListView list = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(), Source = new ListWrapper<string>(_log) };
+		Button close = new() { Text = "_Close" };
+
+		close.Accepted += (_, _) => _app.RequestStop();
+
+		body.Add(list);
+		dialog.Add(body);
+		dialog.AddButton(close);
+
+		// start on the newest message, which scrolls only if there are more messages than fit
+		list.SelectedItem = _log.Count - 1;
+
+		_app.Run(dialog);
+	}
 
 	private static string DisplayName(string paper) => char.ToUpperInvariant(paper[0]) + paper[1..];
 
@@ -116,13 +181,13 @@ internal sealed class ScanWindow : Window
 		try {
 			_devices = await _sane.GetDevicesAsync();
 		} catch (SaneException ex) {
-			Log($"SANE couldn't list the scanners: {ex.Message}");
+			Log($"SANE couldn't list the scanners: {ex.Message}", error: true);
 
 			return;
 		}
 
 		if (_devices.Count == 0) {
-			Log("No scanners found. 'sane-tui diag' can help work out why.");
+			Log("No scanners found. 'sane-tui diag' can help work out why.", error: true);
 
 			return;
 		}
@@ -144,7 +209,7 @@ internal sealed class ScanWindow : Window
 
 			options = device.Options;
 		} catch (SaneException ex) {
-			Log($"Couldn't open the {info.Model}: {ex.Message}");
+			Log($"Couldn't open the {info.Model}: {ex.Message}", error: true);
 
 			return;
 		}
@@ -190,7 +255,7 @@ internal sealed class ScanWindow : Window
 		}
 
 		if (SelectedDevice() is not { } device) {
-			Log("Choose a scanner first.");
+			Log("Choose a scanner first.", error: true);
 
 			return;
 		}
@@ -213,18 +278,24 @@ internal sealed class ScanWindow : Window
 		_scanning = new CancellationTokenSource();
 		_scan.Text = "_Cancel";
 		_bar.Fraction = 0;
+		_bar.Visible = true;
 
 		var token = _scanning.Token;
 		var progress = new Reporter(fraction => OnUi(() => _bar.Fraction = (float)fraction));
 
 		Finished = Task.Run(async () => {
-			var exitCode = await ScanCommand.RunAsync(request, new StatusWriter(Log), token, showProgress: false, progress);
+			var exitCode = await ScanCommand.RunAsync(request, new StatusWriter(line => Log(line)), token, showProgress: false, progress);
 
 			OnUi(() => {
-				_bar.Fraction = exitCode == 0 ? 1 : 0;
+				_bar.Visible = false;
 				_scan.Text = "_Scan";
 				_scanning?.Dispose();
 				_scanning = null;
+
+				// 130 is the user cancelling, which isn't a failure to dwell on
+				if (exitCode is not (0 or 130)) {
+					_latest.SchemeName = _errorScheme;
+				}
 			});
 		});
 
