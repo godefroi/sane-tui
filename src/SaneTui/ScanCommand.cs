@@ -121,6 +121,11 @@ internal static class ScanCommand
 			Say($"Couldn't write the image: {ex.Message}{(saved > 0 ? $" {saved} earlier page(s) were saved." : "")}");
 
 			return 1;
+		} catch (Exception ex) {
+			// anything not expected above (a codec failure, an odd reply from a scanner): say so, rather than ending the run with a stack trace or silence
+			Say($"Something unexpected went wrong ({ex.GetType().Name}): {ex.Message}{(saved > 0 ? $" {saved} page(s) were saved before that." : "")}");
+
+			return 1;
 		}
 	}
 

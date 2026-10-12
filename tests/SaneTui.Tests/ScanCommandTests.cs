@@ -263,6 +263,29 @@ public class ScanCommandTests
 		await Assert.That(Directory.GetFileSystemEntries(dir.Path)).IsEmpty();
 	}
 
+	private sealed class ThrowingProgress : IProgress<double>
+	{
+		public void Report(double value) => throw new FormatException("boom");
+	}
+
+	[Test]
+	public async Task UnexpectedFailure_IsReported_NotLeftToEscapeSilently()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+		var log = new StringWriter();
+
+		// a progress callback that fails stands in for any error the command doesn't specifically expect
+		var exitCode = await ScanCommand.RunAsync(Request(Path.Combine(dir.Path, "scan.jpg")), log, CancellationToken.None, reporter: new ThrowingProgress());
+
+		await Assert.That(exitCode).IsEqualTo(1);
+		await Assert.That(log.ToString()).Contains("unexpected");
+		await Assert.That(log.ToString()).Contains("FormatException");
+		await Assert.That(log.ToString()).Contains("boom");
+		await Assert.That(Directory.GetFileSystemEntries(dir.Path)).IsEmpty();
+	}
+
 	[Test]
 	public async Task UnknownOption_SaysSoAndPointsAtDump()
 	{

@@ -85,7 +85,8 @@ internal sealed class ScanWindow : Window
 		status.Add(_bar, _earlier, _latest);
 
 		// The preview will be drawn in here. Until then it says so.
-		FrameView preview = new() { Title = "Preview", X = 0, Y = Pos.Bottom(settings), Width = Dim.Fill(), Height = Dim.Fill(status), SchemeName = Palette.Accent };
+		// Not focusable: there's nothing to do in it yet, and a click that focused it left the keyboard with nowhere to go.
+		FrameView preview = new() { Title = "Preview", X = 0, Y = Pos.Bottom(settings), Width = Dim.Fill(), Height = Dim.Fill(status), SchemeName = Palette.Accent, CanFocus = false };
 
 		// the preview sits on a darker canvas, like a light table
 		View canvas = new() { Width = Dim.Fill(), Height = Dim.Fill(), SchemeName = Palette.Canvas };
@@ -283,19 +284,27 @@ internal sealed class ScanWindow : Window
 		var progress = new Reporter(fraction => OnUi(() => _bar.Fraction = (float)fraction));
 
 		Finished = Task.Run(async () => {
-			var exitCode = await ScanCommand.RunAsync(request, new StatusWriter(line => Log(line)), token, showProgress: false, progress);
+			var exitCode = 1;
 
-			OnUi(() => {
-				_bar.Visible = false;
-				_scan.Text = "_Scan";
-				_scanning?.Dispose();
-				_scanning = null;
+			try {
+				exitCode = await ScanCommand.RunAsync(request, new StatusWriter(line => Log(line)), token, showProgress: false, progress);
+			} catch (Exception ex) {
+				// ScanCommand reports what it expects to go wrong; this is for what it doesn't, so the screen never just goes quiet
+				Log($"Something unexpected went wrong ({ex.GetType().Name}): {ex.Message}", error: true);
+			} finally {
+				// always back to idle, or the Scan button would be stuck acting as Cancel
+				OnUi(() => {
+					_bar.Visible = false;
+					_scan.Text = "_Scan";
+					_scanning?.Dispose();
+					_scanning = null;
 
-				// 130 is the user cancelling, which isn't a failure to dwell on
-				if (exitCode is not (0 or 130)) {
-					_latest.SchemeName = _errorScheme;
-				}
-			});
+					// 130 is the user cancelling, which isn't a failure to dwell on
+					if (exitCode is not (0 or 130)) {
+						_latest.SchemeName = _errorScheme;
+					}
+				});
+			}
 		});
 
 		await Finished;
