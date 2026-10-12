@@ -11,19 +11,31 @@ namespace SaneTui;
 /// <param name="Batch">Scan every sheet in the document feeder.</param>
 /// <param name="MaxPages">Stop a batch after this many pages.</param>
 /// <param name="Settings">Extra <c>name=value</c> options, applied last.</param>
-internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings);
+/// <param name="Paper">A paper size name (see <see cref="PaperSizes"/>) to use instead of <paramref name="Width"/> and <paramref name="Height"/>.</param>
+internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings, string? Paper = null);
 
 internal static class ScanCommand
 {
 	// 0 = scanned, 1 = failed (pages scanned before the failure are still saved), 130 = cancelled
-	public static async Task<int> RunAsync(ScanRequest request, TextWriter log, CancellationToken cancellationToken)
+	// showProgress: draw a live percentage on the log, which only makes sense on a terminal
+	public static async Task<int> RunAsync(ScanRequest request, TextWriter log, CancellationToken cancellationToken, bool showProgress = false)
 	{
 		var saved = 0;
+		var progress = showProgress ? new ProgressLine(log) : null;
+
+		// a message must not land in the middle of a half-drawn progress line
+		void Say(string message)
+		{
+			progress?.Finish();
+			log.WriteLine(message);
+		}
 
 		try {
 			if (!ImageWriter.IsJpeg(request.Output)) {
 				throw new CommandException("Only JPEG output is supported so far. Name the output file with a .jpg or .jpeg extension.");
 			}
+
+			var (width, height) = RequestedSize(request);
 
 			// found out now, not after the page has been scanned and has nowhere to go
 			var folder = Path.GetDirectoryName(Path.GetFullPath(request.Output))!;
@@ -41,16 +53,20 @@ internal static class ScanCommand
 				var device = await sane.OpenAsync(name);
 
 				try {
-					await ApplyOptionsAsync(device, request);
-
+					var area = await ApplyOptionsAsync(device, request, width, height);
 					var dpi = Resolution(device);
 
-					log.WriteLine($"Scanning with {name}...");
+					if (width is { } w && height is { } h && (area.Width < w - 1 || area.Height < h - 1)) {
+						Say($"Note: this scanner can't cover {w:0.#} x {h:0.#} mm. It will scan {area.Width:0.#} x {area.Height:0.#} mm, so the page is cut off.");
+					}
+
+					Say($"Scanning with {name}: {area.Width:0.#} x {area.Height:0.#} mm{(dpi is { } d ? $" at {d:G} dpi" : "")}. Many scanners calibrate before the page starts.");
 
 					if (request.Batch) {
-						var pages = device.ScanBatchAsync(cancellationToken);
+						progress?.StartPage("Page 1:");
 
-						await foreach (var page in pages.WithCancellation(cancellationToken)) {
+						await foreach (var page in device.ScanBatchAsync(progress, cancellationToken).WithCancellation(cancellationToken)) {
+							progress?.Finish();
 							Save(page, dpi, BatchPath(request.Output, saved + 1), log);
 
 							// counted only once the file exists: the failure messages say how many pages were kept
@@ -59,44 +75,67 @@ internal static class ScanCommand
 							if (request.MaxPages is { } max && saved >= max) {
 								break;
 							}
+
+							progress?.StartPage($"Page {saved + 1}:");
 						}
 					} else {
-						Save(await device.ScanAsync(cancellationToken), dpi, request.Output, log);
+						progress?.StartPage("Scanning:");
+
+						var page = await device.ScanAsync(progress, cancellationToken);
+
+						progress?.Finish();
+						Save(page, dpi, request.Output, log);
 
 						saved++;
 					}
 				} finally {
-					await Patiently("Closing the scanner (some park the scan head first). Press Ctrl+C twice to quit without waiting...", device.DisposeAsync, log);
+					await Patiently("Closing the scanner. Some scanners return the scan head first. Press Ctrl+C twice to quit without waiting...", device.DisposeAsync, log);
 				}
 			} finally {
-				await Patiently("Shutting down SANE (some scanners park the scan head and switch the lamp off first). Press Ctrl+C twice to quit without waiting...", sane.DisposeAsync, log);
+				await Patiently("Shutting down SANE. The scanner may still be returning the scan head and switching its lamp off. Press Ctrl+C twice to quit without waiting...", sane.DisposeAsync, log);
 			}
 
 			return 0;
 		} catch (OperationCanceledException) {
-			log.WriteLine(saved > 0 ? $"Cancelled. {saved} page(s) were saved." : "Cancelled.");
+			Say(saved > 0 ? $"Cancelled. {saved} page(s) were saved." : "Cancelled.");
 
 			return 130;
 		} catch (CommandException ex) {
-			log.WriteLine(ex.Message);
+			Say(ex.Message);
 
 			return 1;
 		} catch (SaneException ex) {
-			log.WriteLine(request.Batch && saved == 0 && ex.Status == SaneStatus.NoDocs
+			Say(request.Batch && saved == 0 && ex.Status == SaneStatus.NoDocs
 				? "The document feeder is empty."
 				: $"The scanner reported a problem: {ex.Message}{(saved > 0 ? $" {saved} page(s) were saved before that." : "")}");
 
 			return 1;
 		} catch (InvalidOperationException ex) {
 			// SaneDevice says why an option can't be set (inactive, read-only)
-			log.WriteLine(ex.Message);
+			Say(ex.Message);
 
 			return 1;
 		} catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
-			log.WriteLine($"Couldn't write the image: {ex.Message}{(saved > 0 ? $" {saved} earlier page(s) were saved." : "")}");
+			Say($"Couldn't write the image: {ex.Message}{(saved > 0 ? $" {saved} earlier page(s) were saved." : "")}");
 
 			return 1;
 		}
+	}
+
+	// A paper size is a shortcut for a width and height, so it can't be combined with either.
+	private static (double? Width, double? Height) RequestedSize(ScanRequest request)
+	{
+		if (request.Paper is not { } paper) {
+			return (request.Width, request.Height);
+		}
+
+		if (request.Width is not null || request.Height is not null) {
+			throw new CommandException("Use --paper, or --width and --height, not both.");
+		}
+
+		return PaperSizes.TryGet(paper, out var size)
+			? (size.Width, size.Height)
+			: throw new CommandException($"'{paper}' isn't a paper size I know. Choose one of: {string.Join(", ", PaperSizes.Names)}. Or give --width and --height in millimeters.");
 	}
 
 	// Closing a scanner can take a while (it may park the scan head first). Say what we're waiting for, but only if it's slow,
@@ -160,7 +199,7 @@ internal static class ScanCommand
 	}
 
 	// Order matters: the source can change which modes and areas exist, and the mode and depth can change what resolutions are allowed.
-	private static async Task ApplyOptionsAsync(SaneDevice device, ScanRequest request)
+	private static async Task<SaneScanArea> ApplyOptionsAsync(SaneDevice device, ScanRequest request, double? width, double? height)
 	{
 		if (request.Source is { } source) {
 			await SetAsync(device, "source", source);
@@ -176,8 +215,10 @@ internal static class ScanCommand
 
 		await SetAsync(device, "resolution", request.Resolution.ToString(CultureInfo.InvariantCulture));
 
+		SaneScanArea area;
+
 		try {
-			await device.SetScanAreaAsync(request.Width, request.Height);
+			area = await device.SetScanAreaAsync(width, height);
 		} catch (NotSupportedException ex) {
 			throw new CommandException($"Can't choose the scan area on this device: {ex.Message}");
 		} catch (ArgumentOutOfRangeException ex) {
@@ -193,6 +234,8 @@ internal static class ScanCommand
 
 			await SetAsync(device, setting[..equals].Trim(), setting[(equals + 1)..].Trim());
 		}
+
+		return area;
 	}
 
 	private static async Task SetAsync(SaneDevice device, string name, string text)

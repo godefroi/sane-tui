@@ -15,11 +15,12 @@ public sealed partial class SaneDevice
 	/// hardware, which can take a while to stop. With a document feeder this scans the next sheet; use
 	/// <see cref="ScanBatchAsync"/> to scan everything in the feeder.
 	/// </remarks>
+	/// <param name="progress">Receives how much of the page has arrived, from 0 to 1. See <see cref="ScanBatchAsync"/> for when it reports.</param>
 	/// <param name="cancellationToken">Cancels the scan.</param>
 	/// <exception cref="OperationCanceledException">The scan was cancelled. The device stays usable.</exception>
 	/// <exception cref="SaneException">The scanner reported a problem. Check <see cref="SaneException.Status"/>: for example <see cref="SaneStatus.NoDocs"/> (feeder empty), <see cref="SaneStatus.Jammed"/>, <see cref="SaneStatus.CoverOpen"/>.</exception>
 	/// <exception cref="InvalidOperationException">Another scan is already in progress on this device.</exception>
-	public async Task<SaneImage> ScanAsync(CancellationToken cancellationToken = default)
+	public async Task<SaneImage> ScanAsync(IProgress<double>? progress = null, CancellationToken cancellationToken = default)
 	{
 		BeginScan();
 
@@ -28,7 +29,7 @@ public sealed partial class SaneDevice
 				var handle = Handle();
 
 				try {
-					return ReadPage(handle, cancellationToken);
+					return ReadPage(handle, progress, cancellationToken);
 				} finally {
 					Native.sane_cancel(handle);
 				}
@@ -51,11 +52,17 @@ public sealed partial class SaneDevice
 	/// Options can't be changed until the enumeration ends. Stopping early (<c>break</c>, or disposing the enumerator) ends the batch cleanly.
 	/// </para>
 	/// </remarks>
+	/// <param name="progress">
+	/// Receives how much of the current page has arrived, from 0 to 1, and starts again at 0 for each page. It's called on a background thread, so it
+	/// shouldn't do anything slow. Scanners usually spend time warming up and calibrating before the first byte arrives, so don't read
+	/// a long wait at 0 as a stall. Nothing is reported while arriving if the scanner doesn't say how long the page is (hand scanners), but 1 is
+	/// always reported when a page finishes. Three-pass scanners, which send red, green and blue separately, count each color from 0 to 1.
+	/// </param>
 	/// <param name="cancellationToken">Cancels the batch, including a page that is mid-scan.</param>
 	/// <exception cref="OperationCanceledException">The batch was cancelled. The device stays usable.</exception>
 	/// <exception cref="SaneException">The feeder was already empty when the batch started (<see cref="SaneStatus.NoDocs"/>), or the scanner reported a problem such as a jam. Pages already received aren't lost.</exception>
 	/// <exception cref="InvalidOperationException">Another scan is already in progress on this device.</exception>
-	public async IAsyncEnumerable<SaneImage> ScanBatchAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+	public async IAsyncEnumerable<SaneImage> ScanBatchAsync(IProgress<double>? progress = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
 	{
 		BeginScan();
 
@@ -64,7 +71,7 @@ public sealed partial class SaneDevice
 				SaneImage? image = null;
 
 				try {
-					image = await _library.Worker.RunAsync(() => ReadPage(Handle(), cancellationToken)).ConfigureAwait(false);
+					image = await _library.Worker.RunAsync(() => ReadPage(Handle(), progress, cancellationToken)).ConfigureAwait(false);
 				} catch (SaneException ex) when (page > 0 && ex.Status == SaneStatus.NoDocs) {
 					// the feeder is empty; that's how a batch ends
 				}
@@ -96,7 +103,7 @@ public sealed partial class SaneDevice
 
 	// One page is one work item: SANE doesn't allow other calls on the handle mid-frame anyway.
 	// Leaves the device scanning; callers end it with sane_cancel.
-	private static SaneImage ReadPage(nint handle, CancellationToken cancellationToken)
+	private static SaneImage ReadPage(nint handle, IProgress<double>? progress, CancellationToken cancellationToken)
 	{
 		cancellationToken.ThrowIfCancellationRequested();
 
@@ -112,7 +119,7 @@ public sealed partial class SaneDevice
 			// only trustworthy after sane_start; before it the values are estimates
 			CheckScan(Native.sane_get_parameters(handle, out var p), cancellationToken);
 
-			frames.Add(ReadFrame(handle, p, cancellationToken));
+			frames.Add(ReadFrame(handle, p, progress, cancellationToken));
 
 			if (p.LastFrame != 0) {
 				break;
@@ -122,7 +129,7 @@ public sealed partial class SaneDevice
 		return Assemble(frames);
 	}
 
-	private static unsafe Frame ReadFrame(nint handle, NativeParameters p, CancellationToken cancellationToken)
+	private static unsafe Frame ReadFrame(nint handle, NativeParameters p, IProgress<double>? progress, CancellationToken cancellationToken)
 	{
 		if (p.BytesPerLine <= 0 || p.PixelsPerLine <= 0) {
 			throw new InvalidOperationException($"The scanner reported an unusable frame ({p.PixelsPerLine} pixels, {p.BytesPerLine} bytes per line).");
@@ -138,6 +145,22 @@ public sealed partial class SaneDevice
 
 		var buffer = new byte[capacity];
 		var used = 0;
+
+		// one report per whole percent: more would only make the callback busy for no visible change
+		var expected = p.Lines > 0 ? (long)p.Lines * p.BytesPerLine : 0;
+		var lastPercent = -1;
+
+		void Report(int percent)
+		{
+			if (percent != lastPercent) {
+				lastPercent = percent;
+				progress!.Report(percent / 100.0);
+			}
+		}
+
+		if (progress is not null && expected > 0) {
+			Report(0);
+		}
 
 		while (true) {
 			if (used == buffer.Length) {
@@ -166,7 +189,13 @@ public sealed partial class SaneDevice
 			}
 
 			CheckScan(status, cancellationToken);
+
+			if (progress is not null && expected > 0) {
+				Report((int)Math.Min(99, used * 100L / expected)); // 100 is only for a finished page
+			}
 		}
+
+		progress?.Report(1); // a page that ends early (auto-crop) or has no announced length still finishes at 100%
 
 		var height = used / p.BytesPerLine; // a trailing partial line is dropped
 

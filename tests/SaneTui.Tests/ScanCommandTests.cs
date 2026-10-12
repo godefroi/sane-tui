@@ -18,15 +18,121 @@ public class ScanCommandTests
 		NativeLibrary.Free(handle);
 	}
 
-	private static ScanRequest Request(string output, string? device = "test", double resolution = 20, string? source = null, string? mode = null, double? width = null, double? height = null, bool batch = false, int? maxPages = null, params string[] settings) =>
-		new(device, output, source, mode, null, resolution, width, height, batch, maxPages, settings);
+	private static ScanRequest Request(string output, string? device = "test", double resolution = 20, string? source = null, string? mode = null, double? width = null, double? height = null, bool batch = false, int? maxPages = null, string? paper = null, params string[] settings) =>
+		new(device, output, source, mode, null, resolution, width, height, batch, maxPages, settings, paper);
 
-	private static async Task<(int ExitCode, string Log)> Run(ScanRequest request)
+	private static async Task<(int ExitCode, string Log)> Run(ScanRequest request, bool showProgress = false)
 	{
 		var log = new StringWriter();
-		var exitCode = await ScanCommand.RunAsync(request, log, CancellationToken.None);
+		var exitCode = await ScanCommand.RunAsync(request, log, CancellationToken.None, showProgress);
 
 		return (exitCode, log.ToString());
+	}
+
+	[Test]
+	public async Task Paper_ScansThatSize()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+		var output = Path.Combine(dir.Path, "scan.jpg");
+
+		// A6 is 105 x 148 mm, which the 200 x 200 mm test scanner can cover
+		var (exitCode, log) = await Run(Request(output, resolution: 100, paper: "a6"));
+
+		await Assert.That(exitCode).IsEqualTo(0);
+
+		using var image = new MagickImage(output);
+
+		await Assert.That((int)image.Width).IsBetween(412, 416); // 413.4
+		await Assert.That((int)image.Height).IsBetween(582, 585); // 582.7
+		await Assert.That(log).DoesNotContain("Note:");
+	}
+
+	[Test]
+	public async Task Paper_TooBigForTheScanner_ScansWhatItCanAndSaysSo()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (exitCode, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), paper: "a4"));
+
+		await Assert.That(exitCode).IsEqualTo(0);
+		await Assert.That(log).Contains("can't cover 210 x 297 mm");
+		await Assert.That(log).Contains("It will scan 200 x 200 mm");
+	}
+
+	[Test]
+	public async Task Paper_UnknownName_ListsTheKnownOnes()
+	{
+		// needs no libsane: a bad request is refused before the scanner is touched
+		var (exitCode, log) = await Run(Request("page.jpg", paper: "tabloid"));
+
+		await Assert.That(exitCode).IsEqualTo(1);
+		await Assert.That(log).Contains("a4, a5, a6, letter, legal");
+	}
+
+	[Test]
+	public async Task Paper_WithWidthOrHeight_IsRefused()
+	{
+		var (exitCode, log) = await Run(Request("page.jpg", paper: "a4", width: 100));
+
+		await Assert.That(exitCode).IsEqualTo(1);
+		await Assert.That(log).Contains("not both");
+	}
+
+	[Test]
+	public async Task StartLine_SaysWhatAreaAndResolutionWillBeScanned()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (_, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), resolution: 100, width: 50, height: 30));
+
+		await Assert.That(log).Contains("Scanning with test: 50 x 30 mm at 100 dpi");
+	}
+
+	[Test]
+	public async Task Progress_OnATerminal_IsDrawnAndFinishedBeforeTheSavedMessage()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (exitCode, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), resolution: 100, settings: ["read-limit=true", "read-limit-size=1000"]), showProgress: true);
+
+		await Assert.That(exitCode).IsEqualTo(0);
+		await Assert.That(log).Contains("\rScanning: 0%");
+		await Assert.That(log).Contains("\rScanning: 100%" + Environment.NewLine + "Saved");
+	}
+
+	[Test]
+	public async Task Progress_WhenRedirected_LeavesNoCarriageReturnsInTheLog()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (_, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg")), showProgress: false);
+
+		await Assert.That(log).DoesNotContain("\r");
+		await Assert.That(log).DoesNotContain("%");
+	}
+
+	[Test]
+	public async Task Progress_InABatch_LabelsEachPage()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (exitCode, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), source: Feeder, batch: true, maxPages: 2), showProgress: true);
+
+		await Assert.That(exitCode).IsEqualTo(0);
+		await Assert.That(log).Contains("\rPage 1: 100%");
+		await Assert.That(log).Contains("\rPage 2: 100%");
 	}
 
 	[Test]

@@ -35,14 +35,15 @@ var scanSource = new Option<string?>("--source") { Description = "Where the pape
 var scanMode = new Option<string?>("--mode") { Description = "Color, Gray or Lineart (as the scanner names them)." };
 var scanDepth = new Option<int?>("--depth") { Description = "Bits per sample, usually 8." };
 var scanResolution = new Option<double>("--resolution") { Description = "Dots per inch. Scanners often default to a low value, so this defaults to 300.", DefaultValueFactory = _ => 300 };
-var scanWidth = new Option<double?>("--width") { Description = "Width of the area to scan in millimeters. Default: the full width of the scanner." };
-var scanHeight = new Option<double?>("--height") { Description = "Height of the area to scan in millimeters. Default: the full height of the scanner." };
+var scanPaper = new Option<string?>("--paper") { Description = $"The size of the page: {string.Join(", ", PaperSizes.Names)}. A scanner that can't cover it scans what it can and says so. Default: the full area of the scanner." };
+var scanWidth = new Option<double?>("--width") { Description = "Width of the area to scan in millimeters, instead of --paper. Default: the full width of the scanner." };
+var scanHeight = new Option<double?>("--height") { Description = "Height of the area to scan in millimeters, instead of --paper. Default: the full height of the scanner." };
 var scanBatch = new Option<bool>("--batch") { Description = "Scan every sheet in the document feeder. Don't use this with a flatbed, which never runs out of pages (Ctrl+C or --max-pages stops it)." };
 var scanMaxPages = new Option<int?>("--max-pages") { Description = "Stop a --batch after this many pages." };
 var scanSet = new Option<string[]>("--set") { Description = "Set any other scanner option, as name=value. Can be repeated. Applied last.", Arity = ArgumentArity.ZeroOrMore };
 
 var scan = new Command("scan", "Scan a page, or everything in the document feeder, to JPEG files.") {
-	scanDevice, scanOutput, scanSource, scanMode, scanDepth, scanResolution, scanWidth, scanHeight, scanBatch, scanMaxPages, scanSet,
+	scanDevice, scanOutput, scanSource, scanMode, scanDepth, scanResolution, scanPaper, scanWidth, scanHeight, scanBatch, scanMaxPages, scanSet,
 };
 
 scan.SetAction((parseResult, cancellationToken) => DiagCommand.GuardAsync(() => ScanCommand.RunAsync(
@@ -57,9 +58,11 @@ scan.SetAction((parseResult, cancellationToken) => DiagCommand.GuardAsync(() => 
 		parseResult.GetValue(scanHeight),
 		parseResult.GetValue(scanBatch),
 		parseResult.GetValue(scanMaxPages),
-		parseResult.GetValue(scanSet) ?? []),
+		parseResult.GetValue(scanSet) ?? [],
+		parseResult.GetValue(scanPaper)),
 	Console.Error,
-	cancellationToken)));
+	cancellationToken,
+	showProgress: !Console.IsErrorRedirected)));
 
 var root = new RootCommand("Scan documents with SANE from the terminal. With no command, starts the interactive UI.") { diag, dump, scan };
 

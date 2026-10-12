@@ -162,6 +162,76 @@ public class SaneScanTests
 		await AssertLayout(await device.ScanAsync(), SanePixelFormat.Gray, 8);
 	}
 
+	private sealed class Recorder : IProgress<double>
+	{
+		public List<double> Values { get; } = [];
+
+		public void Report(double value) => Values.Add(value);
+	}
+
+	[Test]
+	public async Task Scan_ReportsProgressFromZeroToOne_NeverGoingBackwards()
+	{
+		var (sane, device) = await OpenAsync();
+
+		await using var _ = sane;
+		await using var __ = device;
+
+		// small reads, so there are plenty of points to report at
+		await Set(device, "resolution", 50);
+		await Set(device, "read-limit", true);
+		await Set(device, "read-limit-size", 1000);
+
+		var progress = new Recorder();
+
+		await device.ScanAsync(progress);
+
+		await Assert.That(progress.Values.First()).IsEqualTo(0d);
+		await Assert.That(progress.Values.Last()).IsEqualTo(1d);
+		await Assert.That(progress.Values.Count).IsGreaterThan(20);
+
+		for (var i = 1; i < progress.Values.Count; i++) {
+			await Assert.That(progress.Values[i]).IsGreaterThan(progress.Values[i - 1]);
+		}
+	}
+
+	[Test]
+	public async Task Scan_WithoutAnAnnouncedLength_StillReportsCompletion()
+	{
+		var (sane, device) = await OpenAsync();
+
+		await using var _ = sane;
+		await using var __ = device;
+
+		// a hand scanner doesn't know how long the page is, so there's nothing to measure progress against
+		await Set(device, "hand-scanner", true);
+
+		var progress = new Recorder();
+
+		await device.ScanAsync(progress);
+
+		await Assert.That(progress.Values).IsEquivalentTo([1d]);
+	}
+
+	[Test]
+	public async Task ScanBatch_StartsProgressOverForEachPage()
+	{
+		var (sane, device) = await OpenAsync();
+
+		await using var _ = sane;
+		await using var __ = device;
+
+		await Set(device, "source", Feeder);
+
+		var progress = new Recorder();
+
+		await foreach (var _page in device.ScanBatchAsync(progress)) {
+		}
+
+		await Assert.That(progress.Values.Count(v => v == 0d)).IsEqualTo(10);
+		await Assert.That(progress.Values.Count(v => v == 1d)).IsEqualTo(10);
+	}
+
 	[Test]
 	public async Task Scan_Gray16()
 	{
@@ -304,7 +374,7 @@ public class SaneScanTests
 		await Set(device, "read-delay-duration", 100_000);
 
 		using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500))) {
-			await Assert.ThrowsAsync<OperationCanceledException>(async () => await device.ScanAsync(cts.Token));
+			await Assert.ThrowsAsync<OperationCanceledException>(async () => await device.ScanAsync(cancellationToken: cts.Token));
 		}
 
 		await Set(device, "read-delay", false);
