@@ -53,7 +53,7 @@ internal sealed class ScanWindow : Window
 		_app = app;
 		_sane = sane;
 
-		Title = "sane-tui  (F4 opens a dropdown, Esc quits)";
+		Title = "sane-tui  (Space opens a dropdown, Esc quits)";
 
 		Palette.Register();
 
@@ -233,14 +233,13 @@ internal sealed class ScanWindow : Window
 	// shown only if the scanner has the option, with the values it allows
 	private void SetStringChoice(IReadOnlyList<SaneOption> options, string name, Label label, DropDownList dropDown)
 	{
-		var option = options.FirstOrDefault(o => o.Name == name);
-		var present = option?.StringList is { Count: > 0 };
+		var offered = StringChoices.For(options.FirstOrDefault(o => o.Name == name));
 
-		label.Visible = present;
-		dropDown.Visible = present;
+		label.Visible = offered is not null;
+		dropDown.Visible = offered is not null;
 
-		if (present) {
-			SetChoices(dropDown, option!.StringList!, option.Value as string ?? option.StringList![0]);
+		if (offered is var (choices, selected)) {
+			SetChoices(dropDown, choices, selected);
 		}
 	}
 
