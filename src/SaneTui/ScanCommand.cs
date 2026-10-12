@@ -34,7 +34,7 @@ internal static class ScanCommand
 
 			await using var sane = await SaneLibrary.InitializeAsync();
 
-			var name = request.Device ?? await OnlyScannerAsync(sane);
+			var name = request.Device ?? await OnlyScannerAsync(sane, request);
 
 			// opening by name skips the listing, which can take seconds because drivers probe for hardware
 			await using var device = await sane.OpenAsync(name);
@@ -88,15 +88,44 @@ internal static class ScanCommand
 		}
 	}
 
-	private static async Task<string> OnlyScannerAsync(SaneLibrary sane)
+	private static async Task<string> OnlyScannerAsync(SaneLibrary sane, ScanRequest request)
 	{
 		var devices = await sane.GetDevicesAsync();
 
 		return devices.Count switch {
 			1 => devices[0].Name,
 			0 => throw new CommandException("No scanners found. 'sane-tui diag' can help work out why."),
-			_ => throw new CommandException($"There's more than one scanner; say which one to use:{string.Concat(devices.Select(d => $"{Environment.NewLine}  {d.Name}  ({d.Vendor} {d.Model})"))}"),
+			_ => throw new CommandException(DescribeDeviceChoice(request, devices)),
 		};
+	}
+
+	/// <summary>
+	/// Explains that a scanner has to be chosen, with a command to copy. A scanner name given as the value of another option
+	/// is the likeliest mistake (<c>--source plustek:...</c>), so that case is called out.
+	/// </summary>
+	internal static string DescribeDeviceChoice(ScanRequest request, IReadOnlyList<SaneDeviceInfo> devices)
+	{
+		var values = new[] { request.Source, request.Mode }.Concat(request.Settings.Select(s => s[(s.IndexOf('=') + 1)..]));
+		var misplaced = values.FirstOrDefault(v => v is not null && devices.Any(d => d.Name == v));
+		var chosen = misplaced ?? devices[0].Name;
+		var message = new System.Text.StringBuilder();
+
+		if (misplaced is not null) {
+			message.AppendLine($"'{misplaced}' is the name of a scanner, but it was given as the value of an option. The scanner goes on its own, not after an option name.");
+		} else {
+			message.AppendLine("There's more than one scanner, so say which one to use.");
+		}
+
+		message.AppendLine("For example:");
+		message.AppendLine($"  sane-tui scan {chosen} -o {request.Output}");
+		message.AppendLine();
+		message.AppendLine("Scanners found:");
+
+		foreach (var d in devices) {
+			message.AppendLine($"  {d.Name}  ({d.Vendor} {d.Model})");
+		}
+
+		return message.ToString().TrimEnd();
 	}
 
 	// Order matters: the source can change which modes and areas exist, and the mode and depth can change what resolutions are allowed.
