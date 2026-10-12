@@ -120,6 +120,50 @@ public class ImageWriterTests
 		await Assert.That(read.Density.Units).IsEqualTo(DensityUnit.PixelsPerInch);
 	}
 
+	private static SaneImage Blank(byte value) => new(16, 16, SanePixelFormat.Gray, 8, 16, Enumerable.Repeat(value, 16 * 16).ToArray());
+
+	[Test]
+	public async Task ExistingFile_IsNeverReplaced_TheImageGetsAFreeNameInstead()
+	{
+		using var dir = new TempDirectory();
+		var path = Path.Combine(dir.Path, "page.jpg");
+
+		File.WriteAllText(path, "something precious");
+
+		var written = ImageWriter.WriteJpeg(Blank(200), null, path);
+
+		await Assert.That(File.ReadAllText(path)).IsEqualTo("something precious");
+		await Assert.That(Path.GetFileName(written)).IsEqualTo("page (2).jpg");
+		await Assert.That(new FileInfo(written).Length).IsGreaterThan(100);
+	}
+
+	[Test]
+	public async Task SeveralWritesToOneName_AllSurvive()
+	{
+		using var dir = new TempDirectory();
+		var path = Path.Combine(dir.Path, "page.jpg");
+
+		var names = new[] { ImageWriter.WriteJpeg(Blank(10), null, path), ImageWriter.WriteJpeg(Blank(100), null, path), ImageWriter.WriteJpeg(Blank(250), null, path) };
+
+		await Assert.That(names.Select(p => Path.GetFileName(p)!)).IsEquivalentTo(["page.jpg", "page (2).jpg", "page (3).jpg"]);
+		await Assert.That(Directory.GetFiles(dir.Path).Length).IsEqualTo(3); // and no temporary files left over
+	}
+
+	[Test]
+	public async Task Overwrite_ReplacesTheFile_WhenAskedToExplicitly()
+	{
+		using var dir = new TempDirectory();
+		var path = Path.Combine(dir.Path, "page.jpg");
+
+		File.WriteAllText(path, "old");
+
+		var written = ImageWriter.WriteJpeg(Blank(200), null, path, overwrite: true);
+
+		await Assert.That(written).IsEqualTo(path);
+		await Assert.That(Directory.GetFiles(dir.Path).Length).IsEqualTo(1);
+		await Assert.That(new FileInfo(path).Length).IsGreaterThan(100); // a JPEG now, not the three bytes of "old"
+	}
+
 	[Test]
 	[Arguments("scan.jpg", true)]
 	[Arguments("SCAN.JPEG", true)]

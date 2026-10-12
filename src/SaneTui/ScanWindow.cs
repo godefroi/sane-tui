@@ -159,18 +159,49 @@ internal sealed class ScanWindow : Window
 		// the frame takes the accent for its lines and title; the contents sit on the normal scheme
 		View body = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(), SchemeName = Palette.Main, CanFocus = true };
 		ListView list = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(), Source = new ListWrapper<string>(_log) };
-		Button close = new() { Text = "_Close" };
-
-		close.Accepted += (_, _) => _app.RequestStop();
-
 		body.Add(list);
 		dialog.Add(body);
-		dialog.AddButton(close);
+		dialog.AddButton(new Button { Text = "_Close" }); // the dialog closes itself when a button is pressed
 
 		// start on the newest message, which scrolls only if there are more messages than fit
 		list.SelectedItem = _log.Count - 1;
 
 		_app.Run(dialog);
+	}
+
+	/// <summary>Asks what to do about files that are in the way. Null means don't scan. Cancel has the focus, so a stray Enter can't replace anything.</summary>
+	private ExistingFiles? AskAboutExisting(IReadOnlyList<string> existing, ScanRequest request)
+	{
+		var newName = Path.GetFileName(OutputFiles.FreeName(request.Output, request.Batch));
+
+		using Dialog dialog = new() { Title = "Already exists", Width = Dim.Percent(70), Height = 11, SchemeName = Palette.Accent };
+
+		View body = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(), SchemeName = Palette.Main, CanFocus = true };
+
+		body.Add(new Label {
+			X = 1,
+			Y = 1,
+			Text = $"{OutputFiles.Describe(existing, request.Batch)}\n\nYes:     replace the existing file(s).\nNo:      keep them, and save as {newName}.\nCancel:  don't scan.",
+		});
+
+		Button cancel = new() { Text = "_Cancel" };
+
+		dialog.Add(body);
+		dialog.AddButton(new Button { Text = "_Yes" });
+		dialog.AddButton(new Button { Text = "_No" });
+		dialog.AddButton(cancel);
+
+		cancel.SetFocus();
+
+		_app.Run(dialog);
+
+		// The dialog handles its buttons itself: it closes and records which one was pressed, by position, in Result.
+		// It does not raise the buttons' own Accepted events, so handlers on them never run. Null means it was closed without a button.
+		return dialog.Result switch {
+			0 => ExistingFiles.Overwrite,
+			1 => ExistingFiles.Rename,
+			_ => null,
+		};
 	}
 
 	private static string DisplayName(string paper) => char.ToUpperInvariant(paper[0]) + paper[1..];
@@ -301,6 +332,17 @@ internal sealed class ScanWindow : Window
 			null,
 			[],
 			_paper.Value is { } paper && paper != FullArea ? paper : null);
+
+		// Asked before anything starts, while it costs nothing: a sheet already pulled into the scanner can't be put back.
+		if (OutputFiles.Existing(request.Output, request.Batch) is { Count: > 0 } existing) {
+			if (AskAboutExisting(existing, request) is not { } choice) {
+				Log($"Not scanned. {OutputFiles.Describe(existing, request.Batch)}");
+
+				return;
+			}
+
+			request = request with { IfExists = choice };
+		}
 
 		_scanning = new CancellationTokenSource();
 		_scan.Text = "_Cancel";

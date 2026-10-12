@@ -12,7 +12,8 @@ namespace SaneTui;
 /// <param name="MaxPages">Stop a batch after this many pages.</param>
 /// <param name="Settings">Extra <c>name=value</c> options, applied last.</param>
 /// <param name="Paper">A paper size name (see <see cref="PaperSizes"/>) to use instead of <paramref name="Width"/> and <paramref name="Height"/>.</param>
-internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings, string? Paper = null);
+/// <param name="IfExists">What to do if the output files are already there. The default refuses, so nothing is ever replaced unasked.</param>
+internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings, string? Paper = null, ExistingFiles IfExists = ExistingFiles.Fail);
 
 internal static class ScanCommand
 {
@@ -49,6 +50,21 @@ internal static class ScanCommand
 				throw new CommandException($"The folder {folder} doesn't exist. Create it, or choose another output location.");
 			}
 
+			var output = request.Output;
+
+			// Decided before the scanner is touched: refusing afterwards would mean a sheet had already been used up.
+			if (OutputFiles.Existing(output, request.Batch) is { Count: > 0 } existing) {
+				switch (request.IfExists) {
+					case ExistingFiles.Fail:
+						throw new CommandException($"{OutputFiles.Describe(existing, request.Batch)} Choose another name, or use --if-exists overwrite to replace it, or --if-exists rename to keep both.");
+					case ExistingFiles.Rename:
+						output = OutputFiles.FreeName(output, request.Batch);
+						Say($"{OutputFiles.Describe(existing, request.Batch)} Saving as {Path.GetFileName(output)} instead.");
+						break;
+				}
+			}
+
+			var overwrite = request.IfExists == ExistingFiles.Overwrite;
 			var sane = await SaneLibrary.InitializeAsync();
 
 			try {
@@ -80,7 +96,7 @@ internal static class ScanCommand
 
 						await foreach (var page in device.ScanBatchAsync(pageProgress, cancellationToken).WithCancellation(cancellationToken)) {
 							progress?.Finish();
-							Save(page, dpi, BatchPath(request.Output, saved + 1), log);
+							Save(page, dpi, BatchPath(output, saved + 1), overwrite, log);
 
 							// counted only once the file exists: the failure messages say how many pages were kept
 							saved++;
@@ -102,7 +118,7 @@ internal static class ScanCommand
 						var page = await device.ScanAsync(pageProgress, cancellationToken);
 
 						progress?.Finish();
-						Save(page, dpi, request.Output, log);
+						Save(page, dpi, output, overwrite, log);
 
 						saved++;
 					}
@@ -275,10 +291,16 @@ internal static class ScanCommand
 	private static string BatchPath(string output, int page) =>
 		Path.Combine(Path.GetDirectoryName(output) ?? "", $"{Path.GetFileNameWithoutExtension(output)}-{page:000}{Path.GetExtension(output)}");
 
-	private static void Save(SaneImage page, double? dpi, string path, TextWriter log)
+	private static void Save(SaneImage page, double? dpi, string path, bool overwrite, TextWriter log)
 	{
-		ImageWriter.WriteJpeg(page, dpi, path);
+		var written = ImageWriter.WriteJpeg(page, dpi, path, overwrite);
 
-		log.WriteLine($"Saved {path} ({page.Width} x {page.Height} pixels{(dpi is { } d ? $", {d:G} dpi" : "")})");
+		// the up-front check already handled files that existed when the scan started; this is for one that appeared since,
+		// so the page is kept under another name instead of being lost or replacing something
+		if (written != path) {
+			log.WriteLine($"{Path.GetFileName(path)} already exists, so this page was saved as {Path.GetFileName(written)}.");
+		}
+
+		log.WriteLine($"Saved {written} ({page.Width} x {page.Height} pixels{(dpi is { } d ? $", {d:G} dpi" : "")})");
 	}
 }

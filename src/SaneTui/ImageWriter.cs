@@ -15,7 +15,12 @@ internal static class ImageWriter
 	/// it's written under a temporary name and renamed, so an interrupted scan can't leave a half-written file behind.
 	/// </summary>
 	/// <param name="dpi">The scan resolution, so viewers and printers know the physical size. Null if unknown.</param>
-	public static void WriteJpeg(SaneImage image, double? dpi, string path)
+	/// <param name="overwrite">
+	/// Replace a file that is already there. Without it an existing file is never touched: the image is saved under a free
+	/// name instead (<c>scan (2).jpg</c>), because a scanned page can't be thrown away and an existing file can't be replaced unasked.
+	/// </param>
+	/// <returns>The path actually written, which differs from <paramref name="path"/> when that name was taken.</returns>
+	public static string WriteJpeg(SaneImage image, double? dpi, string path, bool overwrite = false)
 	{
 		using var magick = ToMagick(image);
 
@@ -29,7 +34,14 @@ internal static class ImageWriter
 
 		try {
 			magick.Write(temp, MagickFormat.Jpeg);
-			File.Move(temp, path, overwrite: true);
+
+			if (overwrite) {
+				File.Move(temp, path, overwrite: true);
+
+				return path;
+			}
+
+			return MoveToFreeName(temp, path);
 		} catch {
 			// best effort: a failure to clean up (say, the folder doesn't exist) must not hide the error that got us here
 			try {
@@ -40,6 +52,27 @@ internal static class ImageWriter
 
 			throw;
 		}
+	}
+
+	// Moving without overwriting fails if the name is taken, even if it was taken a moment after we looked, so there's no gap
+	// between checking and writing in which a file could be replaced.
+	private static string MoveToFreeName(string temp, string path)
+	{
+		for (var attempt = 1; attempt <= 10_000; attempt++) {
+			var candidate = attempt == 1
+				? path
+				: Path.Combine(Path.GetDirectoryName(path) ?? "", $"{Path.GetFileNameWithoutExtension(path)} ({attempt}){Path.GetExtension(path)}");
+
+			try {
+				File.Move(temp, candidate, overwrite: false);
+
+				return candidate;
+			} catch (IOException) when (File.Exists(candidate)) {
+				// taken; try the next name
+			}
+		}
+
+		throw new IOException($"No free file name was found next to {path}.");
 	}
 
 	internal static MagickImage ToMagick(SaneImage image)

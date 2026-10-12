@@ -18,8 +18,96 @@ public class ScanCommandTests
 		NativeLibrary.Free(handle);
 	}
 
-	private static ScanRequest Request(string output, string? device = "test", double resolution = 20, string? source = null, string? mode = null, double? width = null, double? height = null, bool batch = false, int? maxPages = null, string? paper = null, params string[] settings) =>
-		new(device, output, source, mode, null, resolution, width, height, batch, maxPages, settings, paper);
+	private static ScanRequest Request(string output, string? device = "test", double resolution = 20, string? source = null, string? mode = null, double? width = null, double? height = null, bool batch = false, int? maxPages = null, string? paper = null, ExistingFiles ifExists = ExistingFiles.Fail, params string[] settings) =>
+		new(device, output, source, mode, null, resolution, width, height, batch, maxPages, settings, paper, ifExists);
+
+	[Test]
+	public async Task ExistingOutput_IsRefusedByDefault_BeforeTheScannerIsTouched()
+	{
+		using var dir = new TempDirectory();
+		var output = Path.Combine(dir.Path, "scan.jpg");
+
+		File.WriteAllText(output, "precious");
+
+		// needs no libsane: the check comes first, so no sheet could have been used up
+		var (exitCode, log) = await Run(Request(output));
+
+		await Assert.That(exitCode).IsEqualTo(1);
+		await Assert.That(log).Contains("scan.jpg already exists.");
+		await Assert.That(log).Contains("--if-exists");
+		await Assert.That(log).DoesNotContain("Scanning with");
+		await Assert.That(File.ReadAllText(output)).IsEqualTo("precious");
+	}
+
+	[Test]
+	public async Task ExistingBatchFiles_AreRefusedByDefault()
+	{
+		using var dir = new TempDirectory();
+
+		File.WriteAllText(Path.Combine(dir.Path, "scan-002.jpg"), "precious"); // not even the first page
+
+		var (exitCode, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), batch: true));
+
+		await Assert.That(exitCode).IsEqualTo(1);
+		await Assert.That(log).Contains("scan-002.jpg already exists.");
+		await Assert.That(File.ReadAllText(Path.Combine(dir.Path, "scan-002.jpg"))).IsEqualTo("precious");
+	}
+
+	[Test]
+	public async Task IfExistsOverwrite_ReplacesTheFile()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+		var output = Path.Combine(dir.Path, "scan.jpg");
+
+		File.WriteAllText(output, "old");
+
+		var (exitCode, _) = await Run(Request(output, ifExists: ExistingFiles.Overwrite));
+
+		await Assert.That(exitCode).IsEqualTo(0);
+		await Assert.That(new FileInfo(output).Length).IsGreaterThan(100);
+		await Assert.That(Directory.GetFiles(dir.Path).Length).IsEqualTo(1);
+	}
+
+	[Test]
+	public async Task IfExistsRename_KeepsTheOriginalAndSavesUnderANewName()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+		var output = Path.Combine(dir.Path, "scan.jpg");
+
+		File.WriteAllText(output, "precious");
+
+		var (exitCode, log) = await Run(Request(output, ifExists: ExistingFiles.Rename));
+
+		await Assert.That(exitCode).IsEqualTo(0);
+		await Assert.That(File.ReadAllText(output)).IsEqualTo("precious");
+		await Assert.That(File.Exists(Path.Combine(dir.Path, "scan (2).jpg"))).IsTrue();
+		await Assert.That(log).Contains("Saving as scan (2).jpg instead.");
+	}
+
+	[Test]
+	public async Task IfExistsRename_ForABatch_StartsANewSeries_AndLeavesTheOldPagesAlone()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		File.WriteAllText(Path.Combine(dir.Path, "scan-001.jpg"), "precious 1");
+		File.WriteAllText(Path.Combine(dir.Path, "scan-002.jpg"), "precious 2");
+
+		var (exitCode, _) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), source: Feeder, batch: true, maxPages: 3, ifExists: ExistingFiles.Rename));
+
+		await Assert.That(exitCode).IsEqualTo(0);
+		await Assert.That(File.ReadAllText(Path.Combine(dir.Path, "scan-001.jpg"))).IsEqualTo("precious 1");
+		await Assert.That(File.ReadAllText(Path.Combine(dir.Path, "scan-002.jpg"))).IsEqualTo("precious 2");
+
+		var newPages = Directory.GetFiles(dir.Path).Select(f => Path.GetFileName(f)!).Where(n => n.StartsWith("scan (2)-")).Order().ToList();
+
+		await Assert.That(newPages).IsEquivalentTo(["scan (2)-001.jpg", "scan (2)-002.jpg", "scan (2)-003.jpg"]);
+	}
 
 	private static async Task<(int ExitCode, string Log)> Run(ScanRequest request, bool showProgress = false)
 	{

@@ -40,10 +40,14 @@ var scanWidth = new Option<double?>("--width") { Description = "Width of the are
 var scanHeight = new Option<double?>("--height") { Description = "Height of the area to scan in millimeters, instead of --paper. Default: the full height of the scanner." };
 var scanBatch = new Option<bool>("--batch") { Description = "Scan every sheet in the document feeder. Use this for a feeder: it feeds sheets automatically, so stopping after one can use up the next. Don't use it with a flatbed, which never runs out of pages (Ctrl+C or --max-pages stops it)." };
 var scanMaxPages = new Option<int?>("--max-pages") { Description = "Stop a --batch after this many pages." };
+var scanIfExists = new Option<ExistingFiles>("--if-exists") {
+	Description = "What to do if the output file already exists: fail (the default: scan nothing), overwrite (replace it), or rename (keep it and save under a new name such as scan (2).jpg). Existing files are never replaced unless you say overwrite.",
+	DefaultValueFactory = _ => ExistingFiles.Fail,
+};
 var scanSet = new Option<string[]>("--set") { Description = "Set any other scanner option, as name=value. Can be repeated. Applied last.", Arity = ArgumentArity.ZeroOrMore };
 
 var scan = new Command("scan", "Scan a page, or everything in the document feeder, to JPEG files.") {
-	scanDevice, scanOutput, scanSource, scanMode, scanDepth, scanResolution, scanPaper, scanWidth, scanHeight, scanBatch, scanMaxPages, scanSet,
+	scanDevice, scanOutput, scanSource, scanMode, scanDepth, scanResolution, scanPaper, scanWidth, scanHeight, scanBatch, scanMaxPages, scanIfExists, scanSet,
 };
 
 scan.SetAction((parseResult, cancellationToken) => DiagCommand.GuardAsync(() => ScanCommand.RunAsync(
@@ -59,7 +63,8 @@ scan.SetAction((parseResult, cancellationToken) => DiagCommand.GuardAsync(() => 
 		parseResult.GetValue(scanBatch),
 		parseResult.GetValue(scanMaxPages),
 		parseResult.GetValue(scanSet) ?? [],
-		parseResult.GetValue(scanPaper)),
+		parseResult.GetValue(scanPaper),
+		parseResult.GetValue(scanIfExists)),
 	Console.Error,
 	cancellationToken,
 	showProgress: !Console.IsErrorRedirected)));
