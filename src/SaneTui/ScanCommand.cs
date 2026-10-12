@@ -32,33 +32,41 @@ internal static class ScanCommand
 				throw new CommandException($"The folder {folder} doesn't exist. Create it, or choose another output location.");
 			}
 
-			await using var sane = await SaneLibrary.InitializeAsync();
+			var sane = await SaneLibrary.InitializeAsync();
 
-			var name = request.Device ?? await OnlyScannerAsync(sane, request);
+			try {
+				var name = request.Device ?? await OnlyScannerAsync(sane, request);
 
-			// opening by name skips the listing, which can take seconds because drivers probe for hardware
-			await using var device = await sane.OpenAsync(name);
+				// opening by name skips the listing, which can take seconds because drivers probe for hardware
+				var device = await sane.OpenAsync(name);
 
-			await ApplyOptionsAsync(device, request);
+				try {
+					await ApplyOptionsAsync(device, request);
 
-			var dpi = Resolution(device);
+					var dpi = Resolution(device);
 
-			log.WriteLine($"Scanning with {name}...");
+					log.WriteLine($"Scanning with {name}...");
 
-			if (request.Batch) {
-				var pages = device.ScanBatchAsync(cancellationToken);
+					if (request.Batch) {
+						var pages = device.ScanBatchAsync(cancellationToken);
 
-				await foreach (var page in pages.WithCancellation(cancellationToken)) {
-					saved++;
-					Save(page, dpi, BatchPath(request.Output, saved), log);
+						await foreach (var page in pages.WithCancellation(cancellationToken)) {
+							saved++;
+							Save(page, dpi, BatchPath(request.Output, saved), log);
 
-					if (request.MaxPages is { } max && saved >= max) {
-						break;
+							if (request.MaxPages is { } max && saved >= max) {
+								break;
+							}
+						}
+					} else {
+						saved++;
+						Save(await device.ScanAsync(cancellationToken), dpi, request.Output, log);
 					}
+				} finally {
+					await Patiently("Closing the scanner (some park the scan head first)...", device.DisposeAsync, log);
 				}
-			} else {
-				saved++;
-				Save(await device.ScanAsync(cancellationToken), dpi, request.Output, log);
+			} finally {
+				await Patiently("Shutting down SANE...", sane.DisposeAsync, log);
 			}
 
 			return 0;
@@ -85,6 +93,26 @@ internal static class ScanCommand
 			log.WriteLine($"Couldn't write the image: {ex.Message}{(saved > 1 ? $" {saved - 1} earlier page(s) were saved." : "")}");
 
 			return 1;
+		}
+	}
+
+	// Closing a scanner can take a while (it may park the scan head first). Say what we're waiting for, but only if it's slow,
+	// so a quick shutdown stays quiet and a slow one doesn't look like a hang.
+	internal static async Task Patiently(string message, Func<ValueTask> action, TextWriter log, TimeSpan? after = null)
+	{
+		using var done = new CancellationTokenSource();
+
+		var notice = Task.Delay(after ?? TimeSpan.FromSeconds(2), done.Token).ContinueWith(t => {
+			if (!t.IsCanceled) {
+				log.WriteLine(message);
+			}
+		}, TaskScheduler.Default);
+
+		try {
+			await action();
+		} finally {
+			await done.CancelAsync();
+			await notice;
 		}
 	}
 
