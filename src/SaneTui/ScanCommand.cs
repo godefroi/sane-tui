@@ -51,22 +51,25 @@ internal static class ScanCommand
 						var pages = device.ScanBatchAsync(cancellationToken);
 
 						await foreach (var page in pages.WithCancellation(cancellationToken)) {
+							Save(page, dpi, BatchPath(request.Output, saved + 1), log);
+
+							// counted only once the file exists: the failure messages say how many pages were kept
 							saved++;
-							Save(page, dpi, BatchPath(request.Output, saved), log);
 
 							if (request.MaxPages is { } max && saved >= max) {
 								break;
 							}
 						}
 					} else {
-						saved++;
 						Save(await device.ScanAsync(cancellationToken), dpi, request.Output, log);
+
+						saved++;
 					}
 				} finally {
-					await Patiently("Closing the scanner (some park the scan head first)...", device.DisposeAsync, log);
+					await Patiently("Closing the scanner (some park the scan head first). Press Ctrl+C twice to quit without waiting...", device.DisposeAsync, log);
 				}
 			} finally {
-				await Patiently("Shutting down SANE...", sane.DisposeAsync, log);
+				await Patiently("Shutting down SANE (some scanners park the scan head and switch the lamp off first). Press Ctrl+C twice to quit without waiting...", sane.DisposeAsync, log);
 			}
 
 			return 0;
@@ -90,7 +93,7 @@ internal static class ScanCommand
 
 			return 1;
 		} catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
-			log.WriteLine($"Couldn't write the image: {ex.Message}{(saved > 1 ? $" {saved - 1} earlier page(s) were saved." : "")}");
+			log.WriteLine($"Couldn't write the image: {ex.Message}{(saved > 0 ? $" {saved} earlier page(s) were saved." : "")}");
 
 			return 1;
 		}

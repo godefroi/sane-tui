@@ -1,5 +1,17 @@
 using System.CommandLine;
+using System.Diagnostics;
 using SaneTui;
+
+// The first Ctrl+C asks the running command to stop, which it does at the next safe point. SANE calls can't be interrupted
+// (closing a scanner may wait for the scan head to park), so a second Ctrl+C ends the process outright instead of leaving it unkillable.
+var interrupts = 0;
+
+Console.CancelKeyPress += (_, _) => {
+	if (Interlocked.Increment(ref interrupts) > 1) {
+		Console.Error.WriteLine("Interrupted again. Exiting without waiting for the scanner.");
+		Process.GetCurrentProcess().Kill();
+	}
+};
 
 var devicesArgument = new Argument<string[]>("device") {
 	Description = "Devices to dump, e.g. 'test' or 'net:host:device'. Defaults to every device SANE can see.",

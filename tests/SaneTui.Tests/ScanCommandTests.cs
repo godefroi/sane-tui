@@ -133,6 +133,27 @@ public class ScanCommandTests
 
 		await Assert.That(exitCode).IsEqualTo(1);
 		await Assert.That(log).Contains("Jammed");
+		await Assert.That(log).DoesNotContain("saved"); // nothing was, so the message must not claim it
+		await Assert.That(Directory.GetFileSystemEntries(dir.Path)).IsEmpty();
+	}
+
+	[Test]
+	public async Task CancelledScan_ExitsWith130_WithoutClaimingAPageWasSaved()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+		using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+
+		// at this resolution, with a delay per read, the page takes far longer than the timeout
+		var request = Request(Path.Combine(dir.Path, "scan.jpg"), resolution: 300, settings: ["read-limit=true", "read-limit-size=1000", "read-delay=true", "read-delay-duration=100000"]);
+		var log = new StringWriter();
+
+		var exitCode = await ScanCommand.RunAsync(request, log, cts.Token);
+
+		await Assert.That(exitCode).IsEqualTo(130);
+		await Assert.That(log.ToString()).Contains("Cancelled");
+		await Assert.That(log.ToString()).DoesNotContain("saved");
 		await Assert.That(Directory.GetFileSystemEntries(dir.Path)).IsEmpty();
 	}
 
