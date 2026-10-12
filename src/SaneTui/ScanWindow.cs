@@ -36,6 +36,7 @@ internal sealed class ScanWindow : Window
 	private readonly DropDownList _resolution = new() { X = RightControl, Y = 1, Width = 10, ReadOnly = true };
 	private readonly DropDownList _paper = new() { X = RightControl, Y = 2, Width = 16, ReadOnly = true };
 	private readonly TextField _output = new() { X = LeftControl, Y = 3, Width = Dim.Fill(1), Text = Path.Combine(Environment.CurrentDirectory, "scan.jpg") };
+	private readonly CheckBox _allPages = new() { X = LeftControl, Y = 4, Text = "_All pages in the feeder (numbered files)", Visible = false };
 	private readonly Button _scan = new() { X = LeftLabel, Y = 5, Text = "_Scan" };
 	private readonly Button _quit = new() { Y = 5, Text = "_Quit" };
 	private readonly Button _showLog = new() { Y = 5, Text = "_Log" };
@@ -77,6 +78,7 @@ internal sealed class ScanWindow : Window
 			new Label { X = RightLabel, Y = 1, Text = "Resolution" }, _resolution, new Label { X = Pos.Right(_resolution) + 1, Y = 1, Text = "dpi" },
 			new Label { X = RightLabel, Y = 2, Text = "Page size" }, _paper,
 			new Label { X = LeftLabel, Y = 3, Text = "Save to" }, _output,
+			_allPages,
 			_scan, _quit, _showLog);
 
 		// Fixed height at the bottom: the progress bar (only while scanning) and the last two status messages.
@@ -103,6 +105,19 @@ internal sealed class ScanWindow : Window
 		_scanner.ValueChanged += (_, _) => {
 			if (!_populating && SelectedDevice() is { } device) {
 				_ = LoadOptionsAsync(device);
+			}
+		};
+
+		_source.ValueChanged += (_, _) => {
+			if (!_populating) {
+				UpdateAllPages();
+			}
+		};
+
+		// say it when the box is unticked, which is when the user is looking, not only in the log of the scan that follows
+		_allPages.ValueChanged += (_, _) => {
+			if (_allPages.Visible && _allPages.Value == CheckState.UnChecked) {
+				Log(ScanCommand.FeederNote);
 			}
 		};
 
@@ -228,7 +243,19 @@ internal sealed class ScanWindow : Window
 		SetChoices(_resolution, choices.Select(Format), Format(ResolutionPresets.Default(choices)));
 		SetChoices(_paper, [FullArea, .. PaperSizes.Names.Select(DisplayName)], FullArea);
 
+		UpdateAllPages();
+
 		Log("Ready.");
+	}
+
+	// A feeder feeds sheets by itself, so stopping after one can use up the next. For a feeder the sensible thing is to scan
+	// everything in it, so that's the default; on a flatbed the choice doesn't exist, and a batch there would never end.
+	private void UpdateAllPages()
+	{
+		var feeder = _source.Visible && FeederSources.Looks(_source.Value);
+
+		_allPages.Visible = feeder;
+		_allPages.Value = feeder ? CheckState.Checked : CheckState.UnChecked;
 	}
 
 	// shown only if the scanner has the option, with the values it allows
@@ -270,7 +297,7 @@ internal sealed class ScanWindow : Window
 			double.Parse(_resolution.Value ?? "300", CultureInfo.InvariantCulture),
 			null,
 			null,
-			false,
+			_allPages.Visible && _allPages.Value == CheckState.Checked,
 			null,
 			[],
 			_paper.Value is { } paper && paper != FullArea ? paper : null);

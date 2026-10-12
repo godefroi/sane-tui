@@ -216,6 +216,58 @@ public class ScanCommandTests
 	}
 
 	[Test]
+	public async Task Feeder_SingleSheet_WarnsThatTheNextSheetMayBeUsedUp()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (exitCode, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), source: Feeder));
+
+		await Assert.That(exitCode).IsEqualTo(0);
+		await Assert.That(log).Contains("feeds sheets by itself");
+	}
+
+	[Test]
+	public async Task Flatbed_HasNoFeederWarning()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (_, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg")));
+
+		await Assert.That(log).DoesNotContain("feeds sheets");
+	}
+
+	[Test]
+	public async Task Batch_SaysHowManyPagesItScanned_AndWhyItStopped()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (exitCode, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), source: Feeder, batch: true));
+
+		await Assert.That(exitCode).IsEqualTo(0);
+		await Assert.That(log).Contains("The feeder is empty. Scanned 10 page(s).");
+		await Assert.That(log).DoesNotContain("feeds sheets"); // a batch reads every sheet, so there's nothing to lose
+	}
+
+	[Test]
+	public async Task Batch_StoppedAtMaxPages_SaysItStoppedNotThatTheFeederWasEmpty()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+
+		var (_, log) = await Run(Request(Path.Combine(dir.Path, "scan.jpg"), source: Feeder, batch: true, maxPages: 3));
+
+		await Assert.That(log).Contains("Scanned 3 page(s).");
+		await Assert.That(log).DoesNotContain("feeder is empty");
+	}
+
+	[Test]
 	public async Task Batch_StopsAtMaxPages()
 	{
 		RequireLibsane();

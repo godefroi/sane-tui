@@ -16,6 +16,9 @@ internal sealed record ScanRequest(string? Device, string Output, string? Source
 
 internal static class ScanCommand
 {
+	// short enough to fit one line of an 80-column terminal's status area
+	internal const string FeederNote = "Note: a feeder feeds sheets by itself; stopping after one can use up the next.";
+
 	// 0 = scanned, 1 = failed (pages scanned before the failure are still saved), 130 = cancelled
 	// showProgress: draw a live percentage on the log, which only makes sense on a terminal
 	// reporter: receives the fraction of each page (0 to 1), for a caller that draws its own progress
@@ -62,9 +65,17 @@ internal static class ScanCommand
 						Say($"Note: this scanner can't cover {w:0.#} x {h:0.#} mm. It will scan {area.Width:0.#} x {area.Height:0.#} mm, so the page is cut off.");
 					}
 
+					// An automatic feeder keeps feeding sheets once a job starts, so stopping after one can use up the next,
+					// and it looks like the scanner skipped a page. Say so.
+					if (!request.Batch && FeederSources.Looks(device.Options.FirstOrDefault(o => o.Name == "source")?.Value as string)) {
+						Say(FeederNote);
+					}
+
 					Say($"Scanning with {name}: {area.Width:0.#} x {area.Height:0.#} mm{(dpi is { } d ? $" at {d:G} dpi" : "")}. Many scanners calibrate before the page starts.");
 
 					if (request.Batch) {
+						var stoppedEarly = false;
+
 						progress?.StartPage("Page 1:");
 
 						await foreach (var page in device.ScanBatchAsync(pageProgress, cancellationToken).WithCancellation(cancellationToken)) {
@@ -75,11 +86,16 @@ internal static class ScanCommand
 							saved++;
 
 							if (request.MaxPages is { } max && saved >= max) {
+								stoppedEarly = true;
+
 								break;
 							}
 
 							progress?.StartPage($"Page {saved + 1}:");
 						}
+
+						progress?.Finish();
+						Say(stoppedEarly ? $"Scanned {saved} page(s)." : $"The feeder is empty. Scanned {saved} page(s).");
 					} else {
 						progress?.StartPage("Scanning:");
 

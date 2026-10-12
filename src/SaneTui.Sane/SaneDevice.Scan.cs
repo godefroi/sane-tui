@@ -11,9 +11,14 @@ public sealed partial class SaneDevice
 	/// Scans one page using the current options, and returns it as raw pixels.
 	/// </summary>
 	/// <remarks>
+	/// <para>
 	/// Options can't be changed while this runs. Cancelling the token interrupts the scan even while it's waiting on the scanner
-	/// hardware, which can take a while to stop. With a document feeder this scans the next sheet; use
-	/// <see cref="ScanBatchAsync"/> to scan everything in the feeder.
+	/// hardware, which can take a while to stop.
+	/// </para>
+	/// <para>
+	/// With a document feeder, prefer <see cref="ScanBatchAsync"/>. A feeder feeds sheets automatically once a job starts, so
+	/// ending the job after one page can use up the next sheet without it ever being scanned.
+	/// </para>
 	/// </remarks>
 	/// <param name="progress">Receives how much of the page has arrived, from 0 to 1. See <see cref="ScanBatchAsync"/> for when it reports.</param>
 	/// <param name="cancellationToken">Cancels the scan.</param>
@@ -49,7 +54,8 @@ public sealed partial class SaneDevice
 	/// names of its values vary between drivers, so this can't tell the two apart for you.
 	/// </para>
 	/// <para>
-	/// Options can't be changed until the enumeration ends. Stopping early (<c>break</c>, or disposing the enumerator) ends the batch cleanly.
+	/// Options can't be changed until the enumeration ends. Stopping early (<c>break</c>, or disposing the enumerator) ends the batch cleanly,
+	/// but a feeder feeds sheets on its own, so it may already have pulled the next one, which is then not scanned.
 	/// </para>
 	/// </remarks>
 	/// <param name="progress">

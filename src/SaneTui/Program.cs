@@ -38,7 +38,7 @@ var scanResolution = new Option<double>("--resolution") { Description = "Dots pe
 var scanPaper = new Option<string?>("--paper") { Description = $"The size of the page: {string.Join(", ", PaperSizes.Names)}. A scanner that can't cover it scans what it can and says so. Default: the full area of the scanner." };
 var scanWidth = new Option<double?>("--width") { Description = "Width of the area to scan in millimeters, instead of --paper. Default: the full width of the scanner." };
 var scanHeight = new Option<double?>("--height") { Description = "Height of the area to scan in millimeters, instead of --paper. Default: the full height of the scanner." };
-var scanBatch = new Option<bool>("--batch") { Description = "Scan every sheet in the document feeder. Don't use this with a flatbed, which never runs out of pages (Ctrl+C or --max-pages stops it)." };
+var scanBatch = new Option<bool>("--batch") { Description = "Scan every sheet in the document feeder. Use this for a feeder: it feeds sheets automatically, so stopping after one can use up the next. Don't use it with a flatbed, which never runs out of pages (Ctrl+C or --max-pages stops it)." };
 var scanMaxPages = new Option<int?>("--max-pages") { Description = "Stop a --batch after this many pages." };
 var scanSet = new Option<string[]>("--set") { Description = "Set any other scanner option, as name=value. Can be repeated. Applied last.", Arity = ArgumentArity.ZeroOrMore };
 
