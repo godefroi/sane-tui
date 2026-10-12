@@ -289,7 +289,7 @@ internal static class ScanCommand
 	}
 
 	// the driver may have rounded the requested resolution, so ask what it settled on
-	private static double? Resolution(SaneDevice device) =>
+	internal static double? Resolution(SaneDevice device) =>
 		device.Options.FirstOrDefault(o => o.Name == "resolution")?.Value is { } value ? Convert.ToDouble(value, CultureInfo.InvariantCulture) : null;
 
 	private static string BatchPath(string output, int page) =>
