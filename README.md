@@ -21,13 +21,17 @@ Targets .NET 10. Linux only, since SANE is.
 ## Usage
 
 ```sh
-dotnet run --project src/SaneTui                 # interactive UI
+dotnet run --project src/SaneTui                 # interactive UI (a stub for now)
+dotnet run --project src/SaneTui -- diag         # does libsane load? which scanners does SANE find?
+dotnet run --project src/SaneTui -- scan -o page.jpg          # scan with the only scanner, at 300 dpi, full area
 dotnet run --project src/SaneTui -- dump         # print every option of every device SANE can see
-dotnet run --project src/SaneTui -- dump test    # a specific device (here, the virtual test backend)
-dotnet run --project src/SaneTui -- dump 'net:host:epsonds:libusb:001:004'
 ```
 
-`dump` is for comparing what different backends expose.
+- `diag` is the place to start when nothing works. It reports which libsane was loaded (or why it couldn't be), lists the scanners SANE found, and points out USB devices that look like scanners but weren't claimed by any driver, with a check of whether you may open them.
+- `scan` writes JPEG files. Pick a scanner by name (from `diag`) if there's more than one. Common settings have flags (`--source`, `--mode`, `--resolution`, `--width`, `--height`); anything else is `--set name=value`. Values are checked against what the scanner allows, and the error says what it does allow. `--batch` scans a whole document feeder to `page-001.jpg`, `page-002.jpg`, and so on. Pages already scanned are kept if a later one fails.
+- `dump` prints every option of a device, for comparing what different scanners expose (`dump test` is SANE's virtual test device).
+
+Scanners disagree about option names and values, so look at `dump` output for yours. Only JPEG output exists so far.
 
 ## Tests
 
