@@ -18,10 +18,12 @@ internal static class ScanCommand
 {
 	// 0 = scanned, 1 = failed (pages scanned before the failure are still saved), 130 = cancelled
 	// showProgress: draw a live percentage on the log, which only makes sense on a terminal
-	public static async Task<int> RunAsync(ScanRequest request, TextWriter log, CancellationToken cancellationToken, bool showProgress = false)
+	// reporter: receives the fraction of each page (0 to 1), for a caller that draws its own progress
+	public static async Task<int> RunAsync(ScanRequest request, TextWriter log, CancellationToken cancellationToken, bool showProgress = false, IProgress<double>? reporter = null)
 	{
 		var saved = 0;
 		var progress = showProgress ? new ProgressLine(log) : null;
+		IProgress<double>? pageProgress = progress ?? reporter;
 
 		// a message must not land in the middle of a half-drawn progress line
 		void Say(string message)
@@ -65,7 +67,7 @@ internal static class ScanCommand
 					if (request.Batch) {
 						progress?.StartPage("Page 1:");
 
-						await foreach (var page in device.ScanBatchAsync(progress, cancellationToken).WithCancellation(cancellationToken)) {
+						await foreach (var page in device.ScanBatchAsync(pageProgress, cancellationToken).WithCancellation(cancellationToken)) {
 							progress?.Finish();
 							Save(page, dpi, BatchPath(request.Output, saved + 1), log);
 
@@ -81,7 +83,7 @@ internal static class ScanCommand
 					} else {
 						progress?.StartPage("Scanning:");
 
-						var page = await device.ScanAsync(progress, cancellationToken);
+						var page = await device.ScanAsync(pageProgress, cancellationToken);
 
 						progress?.Finish();
 						Save(page, dpi, request.Output, log);
