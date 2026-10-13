@@ -2,7 +2,7 @@
 
 A terminal UI for scanning documents on Linux (think Skanlite or SimpleScan, but in the terminal), built on a .NET library that talks to [SANE](http://www.sane-project.org/) directly. The library is meant to be useful on its own.
 
-Status: early. The library can enumerate devices, open them, read and set options, and scan pages (single, or a whole document feeder). The terminal UI can pick a scanner and scan one page with the choices that scanner supports; preview and multi-page scanning are still to come.
+Status: early. The library can enumerate devices, open them, read and set options, and scan pages (single, or a whole document feeder). The terminal UI can pick a scanner, preview the bed of a flatbed and drag out the area to scan, and scan the whole feeder of a document scanner.
 
 ## Layout
 
@@ -21,7 +21,7 @@ Targets .NET 10. Linux only, since SANE is.
 ## Usage
 
 ```sh
-dotnet run --project src/SaneTui                 # interactive UI: pick a scanner, settings and a page size, then Scan
+dotnet run --project src/SaneTui                 # interactive UI: pick a scanner, settings and a page size, preview a flatbed, then Scan
 dotnet run --project src/SaneTui -- diag         # does libsane load? which scanners does SANE find?
 dotnet run --project src/SaneTui -- scan -o page.jpg          # scan with the only scanner, at 300 dpi, full area
 dotnet run --project src/SaneTui -- dump         # print every option of every device SANE can see

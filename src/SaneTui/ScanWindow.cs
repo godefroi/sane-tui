@@ -16,6 +16,8 @@ namespace SaneTui;
 internal sealed class ScanWindow : Window
 {
 	private const string FullArea = "Full area";
+	private const string SelectionChoice = "Selection"; // offered in Page size while an area is dragged out on the preview
+	private const string PreviewTitle = "Preview";
 
 	// the settings panel has two columns: [label, control] on the left, [label, control] on the right
 	private const int LeftLabel = 1;
@@ -38,14 +40,19 @@ internal sealed class ScanWindow : Window
 	private readonly TextField _output = new() { X = LeftControl, Y = 3, Width = Dim.Fill(1), Text = Path.Combine(Environment.CurrentDirectory, "scan.jpg") };
 	private readonly CheckBox _allPages = new() { X = LeftControl, Y = 4, Text = "_All pages in the feeder (numbered files)", Visible = false };
 	private readonly Button _scan = new() { X = LeftLabel, Y = 5, Text = "_Scan" };
+	private readonly Button _preview = new() { Y = 5, Text = "_Preview", Visible = false }; // flatbeds only; see UpdateForSource
 	private readonly Button _quit = new() { Y = 5, Text = "_Quit" };
 	private readonly Button _showLog = new() { Y = 5, Text = "_Log" };
 	private readonly ProgressBar _bar = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = 1, Visible = false };
 	private readonly Label _earlier = new() { X = 1, Y = 1, Width = Dim.Fill(1), Text = "" };
 	private readonly Label _latest = new() { X = 1, Y = 2, Width = Dim.Fill(1), Text = "" };
 
+	private readonly PreviewView _previewView = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(), SchemeName = Palette.Canvas };
+	private readonly FrameView _previewFrame = new() { Title = PreviewTitle, X = 0, Width = Dim.Fill(), SchemeName = Palette.Accent, CanFocus = false };
+
 	private IReadOnlyList<SaneDeviceInfo> _devices = [];
-	private CancellationTokenSource? _scanning;
+	private SelectionMm? _selection; // the part of the bed dragged out on the preview, in millimeters
+	private CancellationTokenSource? _scanning; // set while a scan or a preview runs; the one busy state they share
 	private bool _populating; // setting a dropdown's value from code must not look like the user choosing
 	private bool _started;
 
@@ -60,7 +67,8 @@ internal sealed class ScanWindow : Window
 
 		SchemeName = Palette.Main;
 
-		_quit.X = Pos.Right(_scan) + 2;
+		_preview.X = Pos.Right(_scan) + 2;
+		_quit.X = Pos.Right(_preview) + 2;
 		_showLog.X = Pos.Right(_quit) + 2;
 
 		// A frame draws its lines and title in its own scheme, and its contents inherit it. So the frames take the accent
@@ -79,40 +87,60 @@ internal sealed class ScanWindow : Window
 			new Label { X = RightLabel, Y = 2, Text = "Page size" }, _paper,
 			new Label { X = LeftLabel, Y = 3, Text = "Save to" }, _output,
 			_allPages,
-			_scan, _quit, _showLog);
+			_scan, _preview, _quit, _showLog);
 
 		// Fixed height at the bottom: the progress bar (only while scanning) and the last two status messages.
 		View status = new() { X = 0, Y = Pos.AnchorEnd(), Width = Dim.Fill(), Height = 3 };
 
 		status.Add(_bar, _earlier, _latest);
 
-		// The preview will be drawn in here. Until then it says so.
-		// Not focusable: there's nothing to do in it yet, and a click that focused it left the keyboard with nowhere to go.
-		FrameView preview = new() { Title = "Preview", X = 0, Y = Pos.Bottom(settings), Width = Dim.Fill(), Height = Dim.Fill(status), SchemeName = Palette.Accent, CanFocus = false };
-
-		// the preview sits on a darker canvas, like a light table
-		View canvas = new() { Width = Dim.Fill(), Height = Dim.Fill(), SchemeName = Palette.Canvas };
-
-		canvas.Add(new Label { X = Pos.Center(), Y = Pos.Center(), Text = "A preview will appear here." });
-		preview.Add(canvas);
+		// The scanned preview is drawn in here, on a darker canvas like a light table. The frame isn't focusable: clicking it
+		// once focused it and left the keyboard with nowhere to go. Dragging in it still works, since that's the mouse.
+		_previewFrame.Y = Pos.Bottom(settings);
+		_previewFrame.Height = Dim.Fill(status);
+		_previewFrame.Add(_previewView);
 
 		_earlier.SchemeName = Palette.Muted;
 
-		Add(settings, preview, status);
+		Add(settings, _previewFrame, status);
 
-		SetChoices(_paper, [FullArea, .. PaperSizes.Names.Select(DisplayName)], FullArea);
+		SetPaperChoices(FullArea);
 
 		_scanner.ValueChanged += (_, _) => {
 			if (!_populating && SelectedDevice() is { } device) {
+				InvalidatePreview(); // a different scanner has a different bed
+
 				_ = LoadOptionsAsync(device);
 			}
 		};
 
 		_source.ValueChanged += (_, _) => {
 			if (!_populating) {
-				UpdateAllPages();
+				InvalidatePreview(); // a different source can have a different bed
+
+				UpdateForSource();
 			}
 		};
+
+		_paper.ValueChanged += (_, _) => {
+			// choosing anything but the selection gives the selection up, so the dropdown never claims an area the scan won't use
+			if (!_populating && _selection is not null && _paper.Value != SelectionChoice) {
+				_selection = null;
+				_previewView.Selection = null;
+				_previewFrame.Title = PreviewTitle;
+
+				SetPaperChoices(_paper.Value ?? FullArea);
+			}
+		};
+
+		_previewView.SelectionChanged += selection => {
+			_selection = selection;
+			_previewFrame.Title = selection is null ? PreviewTitle : $"{PreviewTitle}  (selected {selection.Width:0} x {selection.Height:0} mm, {selection.Left:0} mm across and {selection.Top:0} mm down)";
+
+			SetPaperChoices(selection is null ? FullArea : SelectionChoice);
+		};
+
+		_preview.Accepted += async (_, _) => await PreviewOrCancelAsync();
 
 		// say it when the box is unticked, which is when the user is looking, not only in the log of the scan that follows
 		_allPages.ValueChanged += (_, _) => {
@@ -272,21 +300,37 @@ internal sealed class ScanWindow : Window
 		var choices = ResolutionPresets.For(options.FirstOrDefault(o => o.Name == "resolution"));
 
 		SetChoices(_resolution, choices.Select(Format), Format(ResolutionPresets.Default(choices)));
-		SetChoices(_paper, [FullArea, .. PaperSizes.Names.Select(DisplayName)], FullArea);
 
-		UpdateAllPages();
+		InvalidatePreview();
+		UpdateForSource();
 
 		Log("Ready.");
 	}
 
 	// A feeder feeds sheets by itself, so stopping after one can use up the next. For a feeder the sensible thing is to scan
 	// everything in it, so that's the default; on a flatbed the choice doesn't exist, and a batch there would never end.
-	private void UpdateAllPages()
+	// A preview is of a bed you can lay something on, so it's for flatbeds only.
+	private void UpdateForSource()
 	{
 		var feeder = _source.Visible && FeederSources.Looks(_source.Value);
 
 		_allPages.Visible = feeder;
 		_allPages.Value = feeder ? CheckState.Checked : CheckState.UnChecked;
+		_preview.Visible = !feeder;
+	}
+
+	// the Page size choices: full area, the paper sizes, and "Selection" while an area has been dragged out on the preview
+	private void SetPaperChoices(string selected) =>
+		SetChoices(_paper, [FullArea, .. _selection is null ? [] : new[] { SelectionChoice }, .. PaperSizes.Names.Select(DisplayName)], selected);
+
+	// Both the picture and any selection belong to one bed: a different scanner or source makes them wrong, so they go.
+	private void InvalidatePreview()
+	{
+		_selection = null;
+		_previewView.SetPreview(null);
+		_previewFrame.Title = PreviewTitle;
+
+		SetPaperChoices(FullArea);
 	}
 
 	// shown only if the scanner has the option, with the values it allows
@@ -318,6 +362,9 @@ internal sealed class ScanWindow : Window
 			return;
 		}
 
+		// the area dragged out on the preview, if that's what Page size says to use
+		var selection = _paper.Value == SelectionChoice ? _selection : null;
+
 		// everything is read here, on the UI thread, before the scan goes to the background
 		var request = new ScanRequest(
 			device.Name,
@@ -326,12 +373,15 @@ internal sealed class ScanWindow : Window
 			_mode.Visible ? _mode.Value : null,
 			null,
 			double.Parse(_resolution.Value ?? "300", CultureInfo.InvariantCulture),
-			null,
-			null,
+			selection?.Width,
+			selection?.Height,
 			_allPages.Visible && _allPages.Value == CheckState.Checked,
 			null,
 			[],
-			_paper.Value is { } paper && paper != FullArea ? paper : null);
+			_paper.Value is { } paper && paper != FullArea && paper != SelectionChoice ? paper : null,
+			ExistingFiles.Fail,
+			selection?.Left ?? 0,
+			selection?.Top ?? 0);
 
 		// Asked before anything starts, while it costs nothing: a sheet already pulled into the scanner can't be put back.
 		if (OutputFiles.Existing(request.Output, request.Batch) is { Count: > 0 } existing) {
@@ -345,7 +395,7 @@ internal sealed class ScanWindow : Window
 		}
 
 		_scanning = new CancellationTokenSource();
-		_scan.Text = "_Cancel";
+		SetBusy(true, preview: false);
 		_bar.Fraction = 0;
 		_bar.Visible = true;
 
@@ -364,13 +414,81 @@ internal sealed class ScanWindow : Window
 				// always back to idle, or the Scan button would be stuck acting as Cancel
 				OnUi(() => {
 					_bar.Visible = false;
-					_scan.Text = "_Scan";
+					SetBusy(false, preview: false);
 					_scanning?.Dispose();
 					_scanning = null;
 
 					// 130 is the user cancelling, which isn't a failure to dwell on
 					if (exitCode is not (0 or 130)) {
 						_latest.SchemeName = _errorScheme;
+					}
+				});
+			}
+		});
+
+		await Finished;
+	}
+
+	// A scan and a preview share the scanner and the progress bar, so only one runs at a time: its button turns into Cancel
+	// and the other is disabled.
+	private void SetBusy(bool busy, bool preview)
+	{
+		_scan.Text = busy && !preview ? "_Cancel" : "_Scan";
+		_preview.Text = busy && preview ? "_Cancel" : "_Preview";
+		_scan.Enabled = !busy || !preview;
+		_preview.Enabled = !busy || preview;
+	}
+
+	private async Task PreviewOrCancelAsync()
+	{
+		if (_scanning is not null) {
+			_scanning.Cancel();
+
+			return;
+		}
+
+		if (SelectedDevice() is not { } device) {
+			Log("Choose a scanner first.", error: true);
+
+			return;
+		}
+
+		var source = _source.Visible ? _source.Value : null;
+
+		_scanning = new CancellationTokenSource();
+		SetBusy(true, preview: true);
+		_bar.Fraction = 0;
+		_bar.Visible = true;
+
+		var token = _scanning.Token;
+		var progress = new Reporter(fraction => OnUi(() => _bar.Fraction = (float)fraction));
+
+		Log($"Previewing the whole bed of the {device.Model}. Many scanners calibrate before the page starts.");
+
+		Finished = Task.Run(async () => {
+			PreviewResult? result = null;
+
+			try {
+				result = await PreviewScan.RunAsync(_sane, device.Name, source, progress, token);
+			} catch (OperationCanceledException) {
+				Log("Preview cancelled.");
+			} catch (Exception ex) when (ex is SaneException or CommandException or InvalidOperationException) {
+				Log($"The preview failed: {ex.Message}", error: true);
+			} catch (Exception ex) {
+				Log($"Something unexpected went wrong ({ex.GetType().Name}): {ex.Message}", error: true);
+			} finally {
+				OnUi(() => {
+					_bar.Visible = false;
+					SetBusy(false, preview: true);
+					_scanning?.Dispose();
+					_scanning = null;
+
+					if (result is not null) {
+						// a new picture starts with no selection and the full area chosen
+						InvalidatePreview();
+						_previewView.SetPreview(result);
+
+						Log($"Preview ready ({result.Area.Width:0.#} x {result.Area.Height:0.#} mm). Drag over it to choose the area to scan; click to clear.");
 					}
 				});
 			}
