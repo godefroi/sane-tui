@@ -11,11 +11,13 @@ internal sealed record SelectionMm(double Left, double Top, double Width, double
 /// </summary>
 /// <remarks>
 /// <para>
-/// A cell shows two image pixels, one above the other (a half-block character with a color for each half), which makes pixels
-/// roughly square. So a view of N columns and M rows is a grid of N by 2M pixels, and the image is scaled to fit it.
+/// The picture covers a whole number of cells, and every cell is the same number of picture pixels wide and tall. With pixel graphics
+/// (Sixel, Kitty) that is the terminal's real cell size, typically around 10 by 20 pixels. Without them it's drawn as half blocks, which
+/// is one pixel wide and two tall per cell. Either way the picture is scaled to fit the view and keeps its proportions, give or take
+/// the rounding to whole cells.
 /// </para>
 /// <para>
-/// Millimeters are worked out by proportion (how far across the image, times the width of the area that was scanned), not from the
+/// Millimeters are worked out by proportion (how far across the picture, times the width of the area that was scanned), not from the
 /// resolution. Scanners round the size of what they scan, and a driver's preview mode may not honor the resolution asked for, so
 /// the proportion is the reliable way to relate the picture to the bed.
 /// </para>
@@ -29,26 +31,37 @@ internal sealed class PreviewGeometry
 	/// <param name="imageWidth">Width of the preview image in pixels.</param>
 	/// <param name="imageHeight">Height of the preview image in pixels.</param>
 	/// <param name="bed">The area that was scanned for the preview, in millimeters. The image covers exactly this.</param>
-	public PreviewGeometry(int viewColumns, int viewRows, int imageWidth, int imageHeight, SaneScanArea bed)
+	/// <param name="cellWidth">Picture pixels across one cell.</param>
+	/// <param name="cellHeight">Picture pixels down one cell.</param>
+	public PreviewGeometry(int viewColumns, int viewRows, int imageWidth, int imageHeight, SaneScanArea bed, int cellWidth = 1, int cellHeight = 2)
 	{
 		_bed = bed;
 
-		var gridWidth = Math.Max(1, viewColumns);
-		var gridHeight = Math.Max(1, viewRows * 2);
-		var scale = Math.Min((double)gridWidth / Math.Max(1, imageWidth), (double)gridHeight / Math.Max(1, imageHeight));
+		CellWidth = Math.Max(1, cellWidth);
+		CellHeight = Math.Max(1, cellHeight);
 
-		DisplayWidth = Math.Clamp((int)Math.Floor(imageWidth * scale), 1, gridWidth);
-		DisplayHeight = Math.Clamp((int)Math.Floor(imageHeight * scale), 1, gridHeight);
-		Columns = DisplayWidth;
-		Rows = (DisplayHeight + 1) / 2;
-		FirstColumn = (gridWidth - DisplayWidth) / 2;
-		FirstRow = Math.Max(0, (viewRows - Rows) / 2);
+		var viewWidth = Math.Max(1, viewColumns);
+		var viewHeight = Math.Max(1, viewRows);
+		var scale = Math.Min((double)viewWidth * CellWidth / Math.Max(1, imageWidth), (double)viewHeight * CellHeight / Math.Max(1, imageHeight));
+
+		Columns = Math.Clamp((int)Math.Round(imageWidth * scale / CellWidth), 1, viewWidth);
+		Rows = Math.Clamp((int)Math.Round(imageHeight * scale / CellHeight), 1, viewHeight);
+		DisplayWidth = Columns * CellWidth;
+		DisplayHeight = Rows * CellHeight;
+		FirstColumn = (viewWidth - Columns) / 2;
+		FirstRow = (viewHeight - Rows) / 2;
 	}
 
-	/// <summary>Width of the picture as drawn, in pixels (one per column).</summary>
+	/// <summary>Picture pixels across one cell.</summary>
+	public int CellWidth { get; }
+
+	/// <summary>Picture pixels down one cell.</summary>
+	public int CellHeight { get; }
+
+	/// <summary>Width of the picture as drawn, in pixels.</summary>
 	public int DisplayWidth { get; }
 
-	/// <summary>Height of the picture as drawn, in pixels (two per row).</summary>
+	/// <summary>Height of the picture as drawn, in pixels.</summary>
 	public int DisplayHeight { get; }
 
 	/// <summary>The number of view columns the picture covers.</summary>
@@ -64,13 +77,13 @@ internal sealed class PreviewGeometry
 	public int FirstRow { get; }
 
 	/// <summary>
-	/// Which picture pixel is shown in the top (<paramref name="half"/> 0) or bottom (1) half of a cell.
-	/// False if that part of the cell is outside the picture.
+	/// Which picture pixel is shown in a part of a cell: the left edge of its <paramref name="subRow"/>th row of pixels (for half blocks,
+	/// 0 is the top half and 1 the bottom). False if that part of the cell is outside the picture.
 	/// </summary>
-	public bool TryGetPixel(int column, int row, int half, out int x, out int y)
+	public bool TryGetPixel(int column, int row, int subRow, out int x, out int y)
 	{
-		x = column - FirstColumn;
-		y = 2 * (row - FirstRow) + half;
+		x = (column - FirstColumn) * CellWidth;
+		y = (row - FirstRow) * CellHeight + subRow;
 
 		return x >= 0 && x < DisplayWidth && y >= 0 && y < DisplayHeight;
 	}
@@ -95,10 +108,10 @@ internal sealed class PreviewGeometry
 			return null;
 		}
 
-		var left = Math.Min(c1, c2) - FirstColumn;
-		var right = Math.Max(c1, c2) + 1 - FirstColumn;
-		var top = 2 * (Math.Min(r1, r2) - FirstRow);
-		var bottom = Math.Min(DisplayHeight, 2 * (Math.Max(r1, r2) + 1 - FirstRow));
+		var left = (Math.Min(c1, c2) - FirstColumn) * CellWidth;
+		var right = (Math.Max(c1, c2) + 1 - FirstColumn) * CellWidth;
+		var top = (Math.Min(r1, r2) - FirstRow) * CellHeight;
+		var bottom = (Math.Max(r1, r2) + 1 - FirstRow) * CellHeight;
 
 		var (x0, y0) = ToMillimeters(left, top);
 		var (x1, y1) = ToMillimeters(right, bottom);

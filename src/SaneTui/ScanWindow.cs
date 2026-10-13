@@ -488,7 +488,9 @@ internal sealed class ScanWindow : Window
 						InvalidatePreview();
 						_previewView.SetPreview(result);
 
-						Log($"Preview ready ({result.Area.Width:0.#} x {result.Area.Height:0.#} mm). Drag over it to choose the area to scan; click to clear.");
+						// the size the scanner actually sent, since a driver's preview mode can give less than was asked for
+						Log($"Preview ready: {result.Area.Width:0.#} x {result.Area.Height:0.#} mm, scanned as {result.Image.Width} x {result.Image.Height} pixels{(result.Dpi is { } d ? $" (asked for {d:G} dpi)" : "")}. Drag over it to choose the area to scan; click to clear.");
+						Log(_previewView.DescribeRendering());
 					}
 				});
 			}

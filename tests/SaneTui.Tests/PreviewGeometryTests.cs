@@ -141,19 +141,59 @@ public class PreviewGeometryTests
 	}
 
 	[Test]
-	public async Task OddHeightPicture_KeepsTheLastRowsLowerHalfOutsideThePicture()
+	public async Task APictureAlwaysCoversWholeCells_SoAnOddHeightRoundsToTheNearestRow()
 	{
-		// 3 pixels tall: two rows, the second row's bottom half has no pixel
+		// 3 pixels tall is one and a half cells; it's drawn as two whole rows, and the bed still maps onto all of them
 		var g = new PreviewGeometry(10, 5, 10, 3, new SaneScanArea(0, 0, 10, 3));
 
-		await Assert.That(g.DisplayHeight).IsEqualTo(3);
 		await Assert.That(g.Rows).IsEqualTo(2);
+		await Assert.That(g.DisplayHeight).IsEqualTo(4);
 		await Assert.That(g.TryGetPixel(g.FirstColumn, g.FirstRow + 1, 0, out _, out _)).IsTrue();
-		await Assert.That(g.TryGetPixel(g.FirstColumn, g.FirstRow + 1, 1, out _, out _)).IsFalse();
+		await Assert.That(g.TryGetPixel(g.FirstColumn, g.FirstRow + 1, 1, out _, out _)).IsTrue();
 
 		var s = g.SelectionFromDrag(g.FirstColumn, g.FirstRow, g.FirstColumn + 1, g.FirstRow + 1)!;
 
 		await Assert.That(s.Height).IsEqualTo(3d).Within(1e-9); // reaches the bed's edge, not past it
+	}
+
+	[Test]
+	public async Task RealPixelCells_ScaleThePictureToWholeCellsOfThatSize()
+	{
+		// a terminal with 10 x 20 pixel cells: 40 columns x 20 rows is a 400 x 400 pixel area. A 400 x 600 picture fits to 267 x 400
+		var g = new PreviewGeometry(40, 20, 400, 600, new SaneScanArea(0, 0, 200, 300), cellWidth: 10, cellHeight: 20);
+
+		await Assert.That(g.Columns).IsEqualTo(27);
+		await Assert.That(g.Rows).IsEqualTo(20);
+		await Assert.That(g.DisplayWidth).IsEqualTo(270);
+		await Assert.That(g.DisplayHeight).IsEqualTo(400);
+		await Assert.That(g.FirstColumn).IsEqualTo(6);
+		await Assert.That(g.FirstRow).IsEqualTo(0);
+	}
+
+	[Test]
+	public async Task RealPixelCells_SelectionsStillSnapToWholeCellsAndMapByProportion()
+	{
+		var g = new PreviewGeometry(40, 20, 400, 600, new SaneScanArea(0, 0, 200, 300), cellWidth: 10, cellHeight: 20);
+
+		// the left half of the 27 columns (13 of them) over the top 5 of 20 rows
+		var s = g.SelectionFromDrag(g.FirstColumn, g.FirstRow, g.FirstColumn + 12, g.FirstRow + 4)!;
+
+		await Assert.That(s.Left).IsEqualTo(0d).Within(1e-9);
+		await Assert.That(s.Top).IsEqualTo(0d).Within(1e-9);
+		await Assert.That(s.Width).IsEqualTo(200d * 13 / 27).Within(1e-9);
+		await Assert.That(s.Height).IsEqualTo(300d * 5 / 20).Within(1e-9);
+	}
+
+	[Test]
+	public async Task RealPixelCells_PixelsAreFoundByTheirPosition()
+	{
+		var g = new PreviewGeometry(40, 20, 400, 600, new SaneScanArea(0, 0, 200, 300), cellWidth: 10, cellHeight: 20);
+
+		await Assert.That(g.TryGetPixel(g.FirstColumn + 1, g.FirstRow + 2, 5, out var x, out var y)).IsTrue();
+		await Assert.That((x, y)).IsEqualTo((10, 45));
+
+		await Assert.That(g.TryGetPixel(g.FirstColumn - 1, g.FirstRow, 0, out _, out _)).IsFalse();
+		await Assert.That(g.TryGetPixel(g.FirstColumn + 27, g.FirstRow, 0, out _, out _)).IsFalse();
 	}
 
 	[Test]
