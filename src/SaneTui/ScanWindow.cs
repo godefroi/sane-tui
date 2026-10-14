@@ -43,12 +43,13 @@ internal sealed class ScanWindow : Window
 	private readonly Button _preview = new() { Y = 5, Text = "_Preview", Visible = false }; // flatbeds only; see UpdateForSource
 	private readonly Button _quit = new() { Y = 5, Text = "_Quit" };
 	private readonly Button _showLog = new() { Y = 5, Text = "_Log" };
+	private readonly CheckBox _rotate = new() { Y = 5, Text = "_Rotate 180°" };
 	private readonly ProgressBar _bar = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = 1, Visible = false };
 	private readonly Label _earlier = new() { X = 1, Y = 1, Width = Dim.Fill(1), Text = "" };
 	private readonly Label _latest = new() { X = 1, Y = 2, Width = Dim.Fill(1), Text = "" };
 
 	private readonly PreviewView _previewView = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill(), SchemeName = Palette.Canvas };
-	private readonly FrameView _previewFrame = new() { Title = PreviewTitle, X = 0, Width = Dim.Fill(), SchemeName = Palette.Accent, CanFocus = false };
+	private readonly FrameView _previewFrame = new() { Title = PreviewTitle, X = 0, Width = Dim.Fill(), SchemeName = Palette.Accent, CanFocus = true };
 
 	private IReadOnlyList<SaneDeviceInfo> _devices = [];
 	private SelectionMm? _selection; // the part of the bed dragged out on the preview, in millimeters
@@ -70,6 +71,7 @@ internal sealed class ScanWindow : Window
 		_preview.X = Pos.Right(_scan) + 2;
 		_quit.X = Pos.Right(_preview) + 2;
 		_showLog.X = Pos.Right(_quit) + 2;
+		_rotate.X = Pos.Right(_showLog) + 3;
 
 		// A frame draws its lines and title in its own scheme, and its contents inherit it. So the frames take the accent
 		// scheme and everything inside sits on a panel with the normal one.
@@ -87,15 +89,16 @@ internal sealed class ScanWindow : Window
 			new Label { X = RightLabel, Y = 2, Text = "Page size" }, _paper,
 			new Label { X = LeftLabel, Y = 3, Text = "Save to" }, _output,
 			_allPages,
-			_scan, _preview, _quit, _showLog);
+			_scan, _preview, _quit, _showLog, _rotate);
 
 		// Fixed height at the bottom: the progress bar (only while scanning) and the last two status messages.
 		View status = new() { X = 0, Y = Pos.AnchorEnd(), Width = Dim.Fill(), Height = 3 };
 
 		status.Add(_bar, _earlier, _latest);
 
-		// The scanned preview is drawn in here, on a darker canvas like a light table. The frame isn't focusable: clicking it
-		// once focused it and left the keyboard with nowhere to go. Dragging in it still works, since that's the mouse.
+		// The scanned preview is drawn in here, on a darker canvas like a light table. The frame has to be focusable for the picture
+		// inside it to be, which the arrow keys need. (An empty focusable frame once trapped the keyboard, but the picture is a
+		// focus target of its own, so Tab moves on from it.)
 		_previewFrame.Y = Pos.Bottom(settings);
 		_previewFrame.Height = Dim.Fill(status);
 		_previewFrame.Add(_previewView);
@@ -140,6 +143,9 @@ internal sealed class ScanWindow : Window
 			SetPaperChoices(selection is null ? FullArea : SelectionChoice);
 		};
 
+		// the preview shows the page the way up it'll be saved, so the selection on it is turned back to the scanner's view at scan time
+		_rotate.ValueChanged += (_, _) => _previewView.Rotated = Rotated;
+
 		_preview.Accepted += async (_, _) => await PreviewOrCancelAsync();
 
 		// say it when the box is unticked, which is when the user is looking, not only in the log of the scan that follows
@@ -168,6 +174,8 @@ internal sealed class ScanWindow : Window
 
 	/// <summary>Completes when a scan that was running when the window closed has finished stopping.</summary>
 	public Task Finished { get; private set; } = Task.CompletedTask;
+
+	private bool Rotated => _rotate.Value == CheckState.Checked;
 
 	private void OnUi(Action action) => _app.Invoke(action);
 
@@ -365,6 +373,11 @@ internal sealed class ScanWindow : Window
 		// the area dragged out on the preview, if that's what Page size says to use
 		var selection = _paper.Value == SelectionChoice ? _selection : null;
 
+		// the selection is in what the preview shows; the scanner counts from its own corner, so a turned picture is turned back
+		if (selection is not null && Rotated && _previewView.Area is { } bed) {
+			selection = selection.Mirrored(bed);
+		}
+
 		// everything is read here, on the UI thread, before the scan goes to the background
 		var request = new ScanRequest(
 			device.Name,
@@ -381,7 +394,8 @@ internal sealed class ScanWindow : Window
 			_paper.Value is { } paper && paper != FullArea && paper != SelectionChoice ? paper : null,
 			ExistingFiles.Fail,
 			selection?.Left ?? 0,
-			selection?.Top ?? 0);
+			selection?.Top ?? 0,
+			Rotated);
 
 		// Asked before anything starts, while it costs nothing: a sheet already pulled into the scanner can't be put back.
 		if (OutputFiles.Existing(request.Output, request.Batch) is { Count: > 0 } existing) {
@@ -489,7 +503,7 @@ internal sealed class ScanWindow : Window
 						_previewView.SetPreview(result);
 
 						// the size the scanner actually sent, since a driver's preview mode can give less than was asked for
-						Log($"Preview ready: {result.Area.Width:0.#} x {result.Area.Height:0.#} mm, scanned as {result.Image.Width} x {result.Image.Height} pixels{(result.Dpi is { } d ? $" (asked for {d:G} dpi)" : "")}. Drag over it to choose the area to scan; click to clear.");
+						Log($"Preview ready: {result.Area.Width:0.#} x {result.Area.Height:0.#} mm, scanned as {result.Image.Width} x {result.Image.Height} pixels{(result.Dpi is { } d ? $" (asked for {d:G} dpi)" : "")}. Drag over it to choose the area to scan; click to clear. Then the arrow keys slide the area by 1 mm and Shift+arrows resize it.");
 						Log(_previewView.DescribeRendering());
 					}
 				});

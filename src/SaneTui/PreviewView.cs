@@ -1,5 +1,6 @@
 using System.Text;
 using ImageMagick;
+using SaneTui.Sane;
 using Terminal.Gui.Drawing;
 using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
@@ -31,7 +32,7 @@ internal sealed class PreviewView : View
 	private PreviewResult? _result;
 	private PreviewGeometry? _geometry;
 	private Color[,]? _pixels;
-	private (int Columns, int Rows, Size? Cell) _builtFor;
+	private (int Columns, int Rows, Size? Cell, bool Rotated) _builtFor;
 	private SelectionMm? _selection;
 	private (int Column, int Row)? _dragStart;
 	private (int Column, int Row) _dragNow;
@@ -39,9 +40,11 @@ internal sealed class PreviewView : View
 	private bool _surfaceCurrent;
 	private Rectangle _surfaceRectangle;
 	private bool _watchingDriver;
+	private bool _rotated;
 
 	public PreviewView()
 	{
+		CanFocus = true; // for the arrow keys; Tab still leaves, since nothing here uses it
 		// Encoding takes around a tenth of a second at preview size, and every drag step needs one, so it's done in the background:
 		// the picture on screen keeps up with the mouse a step behind instead of the whole screen stalling.
 		_surface = new Surface(this) { CanFocus = false, Visible = false, UseRasterGraphics = true, UseBackgroundRendering = true };
@@ -55,6 +58,40 @@ internal sealed class PreviewView : View
 	public string Placeholder { get; set; } = "A preview will appear here.";
 
 	public bool HasPreview => _result is not null;
+
+	/// <summary>The part of the bed the picture shows, or null without a preview.</summary>
+	public SaneScanArea? Area => _result?.Area;
+
+	/// <summary>
+	/// Shows the picture turned half way round, for a page laid on the bed upside-down. The selection is in what the user sees, so
+	/// changing this turns it over with the picture and raises <see cref="SelectionChanged"/>.
+	/// </summary>
+	public bool Rotated
+	{
+		get => _rotated;
+		set {
+			if (_rotated == value) {
+				return;
+			}
+
+			_rotated = value;
+
+			if (_result is null) {
+				return;
+			}
+
+			if (_selection is not null) {
+				_selection = _selection.Mirrored(_result.Area);
+
+				SelectionChanged?.Invoke(_selection);
+			}
+
+			// rebuilt here and not in the next draw: the raster picture is only redrawn if it was changed before a draw pass starts
+			Rebuild(Viewport.Width, Viewport.Height, RasterProtocol()?.Cell);
+			RefreshSurface();
+			SetNeedsDraw();
+		}
+	}
 
 	/// <summary>The part of the bed the user has selected, or null for none.</summary>
 	public SelectionMm? Selection
@@ -108,7 +145,7 @@ internal sealed class PreviewView : View
 		// the picture is rebuilt only when the view's size or the terminal's graphics support changes
 		var cell = RasterProtocol()?.Cell;
 
-		if (_geometry is null || _pixels is null || _builtFor != (columns, rows, cell)) {
+		if (_geometry is null || _pixels is null || _builtFor != (columns, rows, cell, Rotated)) {
 			Rebuild(columns, rows, cell);
 		}
 
@@ -130,6 +167,38 @@ internal sealed class PreviewView : View
 
 	protected override bool OnMouseEvent(Mouse mouse) => HandleMouse(mouse) || base.OnMouseEvent(mouse);
 
+	/// <summary>Millimeters per key press when adjusting the selection from the keyboard.</summary>
+	internal const double NudgeStep = 1;
+
+	// Mouse selections snap to whole cells, so the keyboard does the fine work: arrows slide the selection, and Shift with an arrow
+	// moves its right and bottom edges. Moving the left and top edges is a slide plus a resize, so every rectangle is reachable.
+	protected override bool OnKeyDown(Key key)
+	{
+		var (dx, dy, dw, dh) = key switch {
+			_ when key == Key.CursorLeft => (-NudgeStep, 0d, 0d, 0d),
+			_ when key == Key.CursorRight => (NudgeStep, 0d, 0d, 0d),
+			_ when key == Key.CursorUp => (0d, -NudgeStep, 0d, 0d),
+			_ when key == Key.CursorDown => (0d, NudgeStep, 0d, 0d),
+			_ when key == Key.CursorLeft.WithShift => (0d, 0d, -NudgeStep, 0d),
+			_ when key == Key.CursorRight.WithShift => (0d, 0d, NudgeStep, 0d),
+			_ when key == Key.CursorUp.WithShift => (0d, 0d, 0d, -NudgeStep),
+			_ when key == Key.CursorDown.WithShift => (0d, 0d, 0d, NudgeStep),
+			_ => (0d, 0d, 0d, 0d),
+		};
+
+		if ((dx, dy, dw, dh) == (0, 0, 0, 0) || _result is not { } result || _selection is not { } selection || _dragStart is not null) {
+			return base.OnKeyDown(key);
+		}
+
+		_selection = dw == 0 && dh == 0 ? selection.Moved(result.Area, dx, dy) : selection.Resized(result.Area, dw, dh);
+
+		SelectionChanged?.Invoke(_selection);
+		RefreshSurface();
+		SetNeedsDraw();
+
+		return true;
+	}
+
 	// The raster surface is a view of its own, drawn on top, so it receives the mouse where the picture is. It forwards everything here
 	// instead of using its own mouse handling (which pans and zooms), so a drag means the same thing wherever it starts.
 	private bool HandleMouse(Mouse mouse)
@@ -145,6 +214,8 @@ internal sealed class PreviewView : View
 			if (mouse.Flags.HasFlag(MouseFlags.LeftButtonPressed)) {
 				_dragStart = (position.X, position.Y);
 				_dragNow = _dragStart.Value;
+
+				SetFocus(); // so the arrow keys can adjust what the drag selects
 
 				// keeps the drag going if the mouse leaves the pane, and delivers the button release wherever it happens
 				App?.Mouse.GrabMouse(this);
@@ -321,7 +392,7 @@ internal sealed class PreviewView : View
 	// handled as they are for files, and averaging while shrinking keeps text legible.
 	private void Rebuild(int columns, int rows, Size? cell)
 	{
-		_builtFor = (columns, rows, cell);
+		_builtFor = (columns, rows, cell, Rotated);
 		_surfaceCurrent = false;
 
 		if (_result is not { } result || columns < 1 || rows < 1) {
@@ -338,6 +409,11 @@ internal sealed class PreviewView : View
 		using var magick = ImageWriter.ToMagick(result.Image);
 
 		magick.Depth = 8;
+
+		if (Rotated) {
+			magick.Rotate(180);
+		}
+
 		magick.Resize(new MagickGeometry((uint)geometry.DisplayWidth, (uint)geometry.DisplayHeight) { IgnoreAspectRatio = true });
 
 		var bytes = magick.ToByteArray(MagickFormat.Rgb);

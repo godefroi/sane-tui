@@ -44,10 +44,11 @@ var scanIfExists = new Option<ExistingFiles>("--if-exists") {
 	Description = "What to do if the output file already exists: fail (the default: scan nothing), overwrite (replace it), or rename (keep it and save under a new name such as scan (2).jpg). Existing files are never replaced unless you say overwrite.",
 	DefaultValueFactory = _ => ExistingFiles.Fail,
 };
+var scanRotate = new Option<bool>("--rotate-180") { Description = "Turn each saved page half way round, for a page laid on the scanner upside-down." };
 var scanSet = new Option<string[]>("--set") { Description = "Set any other scanner option, as name=value. Can be repeated. Applied last.", Arity = ArgumentArity.ZeroOrMore };
 
 var scan = new Command("scan", "Scan a page, or everything in the document feeder, to JPEG files.") {
-	scanDevice, scanOutput, scanSource, scanMode, scanDepth, scanResolution, scanPaper, scanWidth, scanHeight, scanBatch, scanMaxPages, scanIfExists, scanSet,
+	scanDevice, scanOutput, scanSource, scanMode, scanDepth, scanResolution, scanPaper, scanWidth, scanHeight, scanBatch, scanMaxPages, scanIfExists, scanRotate, scanSet,
 };
 
 scan.SetAction((parseResult, cancellationToken) => DiagCommand.GuardAsync(() => ScanCommand.RunAsync(
@@ -64,7 +65,8 @@ scan.SetAction((parseResult, cancellationToken) => DiagCommand.GuardAsync(() => 
 		parseResult.GetValue(scanMaxPages),
 		parseResult.GetValue(scanSet) ?? [],
 		parseResult.GetValue(scanPaper),
-		parseResult.GetValue(scanIfExists)),
+		parseResult.GetValue(scanIfExists),
+		Rotate180: parseResult.GetValue(scanRotate)),
 	Console.Error,
 	cancellationToken,
 	showProgress: !Console.IsErrorRedirected)));

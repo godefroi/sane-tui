@@ -15,14 +15,19 @@ internal static class ImageWriter
 	/// it's written under a temporary name and renamed, so an interrupted scan can't leave a half-written file behind.
 	/// </summary>
 	/// <param name="dpi">The scan resolution, so viewers and printers know the physical size. Null if unknown.</param>
+	/// <param name="rotate180">Turn the picture half way round, for a page that was laid on the scanner upside-down.</param>
 	/// <param name="overwrite">
 	/// Replace a file that is already there. Without it an existing file is never touched: the image is saved under a free
 	/// name instead (<c>scan (2).jpg</c>), because a scanned page can't be thrown away and an existing file can't be replaced unasked.
 	/// </param>
 	/// <returns>The path actually written, which differs from <paramref name="path"/> when that name was taken.</returns>
-	public static string WriteJpeg(SaneImage image, double? dpi, string path, bool overwrite = false)
+	public static string WriteJpeg(SaneImage image, double? dpi, string path, bool overwrite = false, bool rotate180 = false)
 	{
 		using var magick = ToMagick(image);
+
+		if (rotate180) {
+			magick.Rotate(180);
+		}
 
 		if (dpi is { } d) {
 			magick.Density = new Density(d, DensityUnit.PixelsPerInch);

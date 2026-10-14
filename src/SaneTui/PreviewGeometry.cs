@@ -3,7 +3,24 @@ using SaneTui.Sane;
 namespace SaneTui;
 
 /// <summary>A rectangle on the scanner's bed, in millimeters from its top-left corner.</summary>
-internal sealed record SelectionMm(double Left, double Top, double Width, double Height);
+internal sealed record SelectionMm(double Left, double Top, double Width, double Height)
+{
+	/// <summary>The same region of the bed as seen with the picture turned half way round (and back again: it's its own inverse).</summary>
+	public SelectionMm Mirrored(SaneScanArea bed) => this with { Left = 2 * bed.X + bed.Width - Left - Width, Top = 2 * bed.Y + bed.Height - Top - Height };
+
+	/// <summary>Slides the selection, stopping at the edges of the bed with its size unchanged.</summary>
+	public SelectionMm Moved(SaneScanArea bed, double dx, double dy) => this with {
+		Left = Math.Clamp(Left + dx, bed.X, bed.X + bed.Width - Width),
+		Top = Math.Clamp(Top + dy, bed.Y, bed.Y + bed.Height - Height),
+	};
+
+	/// <summary>Moves the right and bottom edges, keeping the selection inside the bed and at least <paramref name="minimum"/> millimeters across.</summary>
+	public SelectionMm Resized(SaneScanArea bed, double dw, double dh, double minimum = 1) => this with {
+		// Math.Max: Clamp throws if the room left is under the minimum, as it can be for a sliver at the very edge
+		Width = Math.Clamp(Width + dw, minimum, Math.Max(minimum, bed.X + bed.Width - Left)),
+		Height = Math.Clamp(Height + dh, minimum, Math.Max(minimum, bed.Y + bed.Height - Top)),
+	};
+}
 
 /// <summary>
 /// Where a scanned preview sits inside a view, and how view cells relate to millimeters on the scanner. Drawing and mouse

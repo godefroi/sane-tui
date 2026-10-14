@@ -207,4 +207,38 @@ public class PreviewGeometryTests
 		// the whole picture is one cell, so every drag is a click
 		await Assert.That(g.SelectionFromDrag(0, 0, 5, 5)).IsNull();
 	}
+
+	private static readonly SaneScanArea Bed = new(0, 0, 200, 300);
+
+	[Test]
+	public async Task MirroringASelection_IsItsOwnInverse_AndKeepsItsSize()
+	{
+		var selection = new SelectionMm(10, 20, 50, 60);
+		var mirrored = selection.Mirrored(Bed);
+
+		await Assert.That(mirrored).IsEqualTo(new SelectionMm(140, 220, 50, 60));
+		await Assert.That(mirrored.Mirrored(Bed)).IsEqualTo(selection);
+	}
+
+	[Test]
+	public async Task MovingASelection_StopsAtTheEdgesOfTheBed_WithoutChangingItsSize()
+	{
+		var selection = new SelectionMm(5, 5, 50, 60);
+
+		await Assert.That(selection.Moved(Bed, 1, 1)).IsEqualTo(new SelectionMm(6, 6, 50, 60));
+		await Assert.That(selection.Moved(Bed, -20, -20)).IsEqualTo(new SelectionMm(0, 0, 50, 60));
+		await Assert.That(selection.Moved(Bed, 500, 500)).IsEqualTo(new SelectionMm(150, 240, 50, 60));
+	}
+
+	[Test]
+	public async Task ResizingASelection_StaysInsideTheBed_AndAboveTheMinimum()
+	{
+		var selection = new SelectionMm(100, 100, 50, 60);
+
+		await Assert.That(selection.Resized(Bed, 1, -1)).IsEqualTo(new SelectionMm(100, 100, 51, 59));
+		await Assert.That(selection.Resized(Bed, 500, 500)).IsEqualTo(new SelectionMm(100, 100, 100, 200));
+		await Assert.That(selection.Resized(Bed, -500, -500)).IsEqualTo(new SelectionMm(100, 100, 1, 1));
+		// a sliver at the very edge can't shrink below the minimum, and mustn't throw trying
+		await Assert.That(new SelectionMm(199.5, 299.5, 0.5, 0.5).Resized(Bed, 1, 1)).IsEqualTo(new SelectionMm(199.5, 299.5, 1, 1));
+	}
 }

@@ -173,6 +173,25 @@ public class ImageWriterTests
 	{
 		await Assert.That(ImageWriter.IsJpeg(path)).IsEqualTo(expected);
 	}
+
+	[Test]
+	public async Task Rotate180_TurnsThePageHalfWayRound()
+	{
+		// dark on top, light below
+		var data = new byte[16 * 16];
+
+		Array.Fill(data, (byte)255, 16 * 8, 16 * 8);
+
+		using var dir = new TempDirectory();
+		var path = Path.Combine(dir.Path, "page.jpg");
+
+		ImageWriter.WriteJpeg(new SaneImage(16, 16, SanePixelFormat.Gray, 8, 16, data), null, path, rotate180: true);
+
+		using var read = new MagickImage(path);
+
+		await Assert.That(Brightness(read, 8, 3)).IsGreaterThan(Light);
+		await Assert.That(Brightness(read, 8, 12)).IsLessThan(Dark);
+	}
 }
 
 internal sealed class TempDirectory : IDisposable

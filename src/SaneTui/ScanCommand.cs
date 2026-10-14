@@ -15,7 +15,7 @@ namespace SaneTui;
 /// <param name="IfExists">What to do if the output files are already there. The default refuses, so nothing is ever replaced unasked.</param>
 /// <param name="Left">Millimeters from the left edge of the scanner to the left of the area. Only meaningful with a <paramref name="Width"/> and <paramref name="Height"/>.</param>
 /// <param name="Top">Millimeters from the top edge of the scanner to the top of the area.</param>
-internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings, string? Paper = null, ExistingFiles IfExists = ExistingFiles.Fail, double Left = 0, double Top = 0);
+internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings, string? Paper = null, ExistingFiles IfExists = ExistingFiles.Fail, double Left = 0, double Top = 0, bool Rotate180 = false);
 
 internal static class ScanCommand
 {
@@ -100,7 +100,7 @@ internal static class ScanCommand
 
 						await foreach (var page in device.ScanBatchAsync(pageProgress, cancellationToken).WithCancellation(cancellationToken)) {
 							progress?.Finish();
-							Save(page, dpi, BatchPath(output, saved + 1), overwrite, log);
+							Save(page, dpi, BatchPath(output, saved + 1), overwrite, request.Rotate180, log);
 
 							// counted only once the file exists: the failure messages say how many pages were kept
 							saved++;
@@ -122,7 +122,7 @@ internal static class ScanCommand
 						var page = await device.ScanAsync(pageProgress, cancellationToken);
 
 						progress?.Finish();
-						Save(page, dpi, output, overwrite, log);
+						Save(page, dpi, output, overwrite, request.Rotate180, log);
 
 						saved++;
 					}
@@ -295,9 +295,9 @@ internal static class ScanCommand
 	private static string BatchPath(string output, int page) =>
 		Path.Combine(Path.GetDirectoryName(output) ?? "", $"{Path.GetFileNameWithoutExtension(output)}-{page:000}{Path.GetExtension(output)}");
 
-	private static void Save(SaneImage page, double? dpi, string path, bool overwrite, TextWriter log)
+	private static void Save(SaneImage page, double? dpi, string path, bool overwrite, bool rotate180, TextWriter log)
 	{
-		var written = ImageWriter.WriteJpeg(page, dpi, path, overwrite);
+		var written = ImageWriter.WriteJpeg(page, dpi, path, overwrite, rotate180);
 
 		// the up-front check already handled files that existed when the scan started; this is for one that appeared since,
 		// so the page is kept under another name instead of being lost or replacing something
