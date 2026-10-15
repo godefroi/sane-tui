@@ -25,7 +25,8 @@ internal static class ScanCommand
 	// 0 = scanned, 1 = failed (pages scanned before the failure are still saved), 130 = cancelled
 	// showProgress: draw a live percentage on the log, which only makes sense on a terminal
 	// reporter: receives the fraction of each page (0 to 1), for a caller that draws its own progress
-	public static async Task<int> RunAsync(ScanRequest request, TextWriter log, CancellationToken cancellationToken, bool showProgress = false, IProgress<double>? reporter = null)
+	// pageSaved: receives the path of each page file as soon as it's written, for a caller that shows pages as they come in
+	public static async Task<int> RunAsync(ScanRequest request, TextWriter log, CancellationToken cancellationToken, bool showProgress = false, IProgress<double>? reporter = null, Action<string>? pageSaved = null)
 	{
 		var saved = 0;
 		var progress = showProgress ? new ProgressLine(log) : null;
@@ -100,7 +101,7 @@ internal static class ScanCommand
 
 						await foreach (var page in device.ScanBatchAsync(pageProgress, cancellationToken).WithCancellation(cancellationToken)) {
 							progress?.Finish();
-							Save(page, dpi, BatchPath(output, saved + 1), overwrite, request.Rotate180, log);
+							pageSaved?.Invoke(Save(page, dpi, BatchPath(output, saved + 1), overwrite, request.Rotate180, log));
 
 							// counted only once the file exists: the failure messages say how many pages were kept
 							saved++;
@@ -122,7 +123,7 @@ internal static class ScanCommand
 						var page = await device.ScanAsync(pageProgress, cancellationToken);
 
 						progress?.Finish();
-						Save(page, dpi, output, overwrite, request.Rotate180, log);
+						pageSaved?.Invoke(Save(page, dpi, output, overwrite, request.Rotate180, log));
 
 						saved++;
 					}
@@ -295,7 +296,7 @@ internal static class ScanCommand
 	private static string BatchPath(string output, int page) =>
 		Path.Combine(Path.GetDirectoryName(output) ?? "", $"{Path.GetFileNameWithoutExtension(output)}-{page:000}{Path.GetExtension(output)}");
 
-	private static void Save(SaneImage page, double? dpi, string path, bool overwrite, bool rotate180, TextWriter log)
+	private static string Save(SaneImage page, double? dpi, string path, bool overwrite, bool rotate180, TextWriter log)
 	{
 		var written = ImageWriter.WriteJpeg(page, dpi, path, overwrite, rotate180);
 
@@ -306,5 +307,7 @@ internal static class ScanCommand
 		}
 
 		log.WriteLine($"Saved {written} ({page.Width} x {page.Height} pixels{(dpi is { } d ? $", {d:G} dpi" : "")})");
+
+		return written;
 	}
 }

@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using ImageMagick;
 using SaneTui.Sane;
 using Terminal.Gui.App;
 using Terminal.Gui.Configuration;
 using Terminal.Gui.Drawing;
+using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 
@@ -18,6 +20,7 @@ internal sealed class ScanWindow : Window
 	private const string FullArea = "Full area";
 	private const string SelectionChoice = "Selection"; // offered in Page size while an area is dragged out on the preview
 	private const string PreviewTitle = "Preview";
+	private const int BedView = -1; // which view is showing: the bed preview, or the index of a scanned page
 
 	// the settings panel has two columns: [label, control] on the left, [label, control] on the right
 	private const int LeftLabel = 1;
@@ -53,6 +56,9 @@ internal sealed class ScanWindow : Window
 
 	private IReadOnlyList<SaneDeviceInfo> _devices = [];
 	private SelectionMm? _selection; // the part of the bed dragged out on the preview, in millimeters
+	private PreviewResult? _bed; // the latest bed preview, kept so it can be shown again after looking at scanned pages
+	private readonly List<string> _pages = []; // files written by the latest scan, oldest first; cleared when the next one starts
+	private int _viewing = BedView;
 	private CancellationTokenSource? _scanning; // set while a scan or a preview runs; the one busy state they share
 	private bool _populating; // setting a dropdown's value from code must not look like the user choosing
 	private bool _started;
@@ -130,7 +136,7 @@ internal sealed class ScanWindow : Window
 			if (!_populating && _selection is not null && _paper.Value != SelectionChoice) {
 				_selection = null;
 				_previewView.Selection = null;
-				_previewFrame.Title = PreviewTitle;
+				UpdateTitle();
 
 				SetPaperChoices(_paper.Value ?? FullArea);
 			}
@@ -138,13 +144,21 @@ internal sealed class ScanWindow : Window
 
 		_previewView.SelectionChanged += selection => {
 			_selection = selection;
-			_previewFrame.Title = selection is null ? PreviewTitle : $"{PreviewTitle}  (selected {selection.Width:0} x {selection.Height:0} mm, {selection.Left:0} mm across and {selection.Top:0} mm down)";
+			UpdateTitle();
 
 			SetPaperChoices(selection is null ? FullArea : SelectionChoice);
 		};
 
 		// the preview shows the page the way up it'll be saved, so the selection on it is turned back to the scanner's view at scan time
-		_rotate.ValueChanged += (_, _) => _previewView.Rotated = Rotated;
+		_rotate.ValueChanged += (_, _) => {
+			// while a page is showing the view isn't drawing the bed, so the selection has to be turned over here
+			if (_viewing != BedView && _selection is { } selection && _bed is { } bed) {
+				_selection = selection.Mirrored(bed.Area);
+			}
+
+			_previewView.Rotated = Rotated;
+			UpdateTitle();
+		};
 
 		_preview.Accepted += async (_, _) => await PreviewOrCancelAsync();
 
@@ -331,14 +345,84 @@ internal sealed class ScanWindow : Window
 	private void SetPaperChoices(string selected) =>
 		SetChoices(_paper, [FullArea, .. _selection is null ? [] : new[] { SelectionChoice }, .. PaperSizes.Names.Select(DisplayName)], selected);
 
-	// Both the picture and any selection belong to one bed: a different scanner or source makes them wrong, so they go.
-	private void InvalidatePreview()
+	// Both the picture and any selection belong to one bed: a different scanner or source makes them wrong, so they go. So do the
+	// pages shown from the last scan, which came from that scanner.
+	private void InvalidatePreview(bool keepPages = false)
 	{
 		_selection = null;
+		_bed = null;
+
+		if (!keepPages) {
+			_pages.Clear();
+		}
+
+		_viewing = BedView;
 		_previewView.SetPreview(null);
-		_previewFrame.Title = PreviewTitle;
+		UpdateTitle();
 
 		SetPaperChoices(FullArea);
+	}
+
+	// What the preview pane shows is the bed preview (BedView) or one of the pages of the latest scan, by index. The bed preview and
+	// its selection are kept here, not only in the view, so they're still there after paging through scanned pages and back.
+	private void ShowView(int index)
+	{
+		_viewing = index;
+
+		if (index == BedView) {
+			_previewView.SetPreview(_bed);
+			_previewView.Selection = _selection;
+		} else {
+			_previewView.ShowPage(_pages[index]);
+		}
+
+		UpdateTitle();
+	}
+
+	// a page just written: add it to the list and show it, so the pages appear as the scanner delivers them
+	private void AddPage(string path)
+	{
+		_pages.Add(path);
+
+		try {
+			ShowView(_pages.Count - 1);
+		} catch (Exception ex) when (ex is MagickException or IOException) {
+			// the scan itself worked and the file is saved; being unable to draw it is only worth a note
+			Log($"Couldn't show {Path.GetFileName(path)}: {ex.Message}", error: true);
+		}
+	}
+
+	// PageUp and PageDown step through the bed preview (if there is one) and the pages scanned since Scan was last pressed
+	private bool StepView(int direction)
+	{
+		var first = _bed is null ? 0 : BedView;
+		var next = Math.Clamp(_viewing + direction, first, _pages.Count - 1);
+
+		if (_pages.Count == 0 || next == _viewing) {
+			return false;
+		}
+
+		ShowView(next);
+
+		return true;
+	}
+
+	protected override bool OnKeyDown(Key key)
+	{
+		if (key == Key.PageUp || key == Key.PageDown) {
+			return StepView(key == Key.PageDown ? 1 : -1) || base.OnKeyDown(key);
+		}
+
+		return base.OnKeyDown(key);
+	}
+
+	private void UpdateTitle()
+	{
+		_previewFrame.Title = _viewing != BedView && _viewing < _pages.Count
+			? $"Page {_viewing + 1} of {_pages.Count}: {Path.GetFileName(_pages[_viewing])}  (PageUp and PageDown for the others)"
+			: _selection is { } s
+				? $"{PreviewTitle}  (selected {s.Width:0} x {s.Height:0} mm, {s.Left:0} mm across and {s.Top:0} mm down)"
+				: _pages.Count > 0 ? $"{PreviewTitle}  (PageDown for the {_pages.Count} scanned page(s))" : PreviewTitle;
 	}
 
 	// shown only if the scanner has the option, with the values it allows
@@ -374,8 +458,8 @@ internal sealed class ScanWindow : Window
 		var selection = _paper.Value == SelectionChoice ? _selection : null;
 
 		// the selection is in what the preview shows; the scanner counts from its own corner, so a turned picture is turned back
-		if (selection is not null && Rotated && _previewView.Area is { } bed) {
-			selection = selection.Mirrored(bed);
+		if (selection is not null && Rotated && _bed is { } bed) {
+			selection = selection.Mirrored(bed.Area);
 		}
 
 		// everything is read here, on the UI thread, before the scan goes to the background
@@ -408,6 +492,10 @@ internal sealed class ScanWindow : Window
 			request = request with { IfExists = choice };
 		}
 
+		// pages from an earlier scan are no longer wanted: several rounds of scanning shouldn't pile up in one list
+		_pages.Clear();
+		ShowView(BedView);
+
 		_scanning = new CancellationTokenSource();
 		SetBusy(true, preview: false);
 		_bar.Fraction = 0;
@@ -420,7 +508,7 @@ internal sealed class ScanWindow : Window
 			var exitCode = 1;
 
 			try {
-				exitCode = await ScanCommand.RunAsync(request, new StatusWriter(line => Log(line)), token, showProgress: false, progress);
+				exitCode = await ScanCommand.RunAsync(request, new StatusWriter(line => Log(line)), token, showProgress: false, progress, pageSaved: path => OnUi(() => AddPage(path)));
 			} catch (Exception ex) {
 				// ScanCommand reports what it expects to go wrong; this is for what it doesn't, so the screen never just goes quiet
 				Log($"Something unexpected went wrong ({ex.GetType().Name}): {ex.Message}", error: true);
@@ -498,9 +586,10 @@ internal sealed class ScanWindow : Window
 					_scanning = null;
 
 					if (result is not null) {
-						// a new picture starts with no selection and the full area chosen
-						InvalidatePreview();
-						_previewView.SetPreview(result);
+						// a new picture starts with no selection and the full area chosen; pages already scanned stay, they are still wanted
+						InvalidatePreview(keepPages: true);
+						_bed = result;
+						ShowView(BedView);
 
 						// the size the scanner actually sent, since a driver's preview mode can give less than was asked for
 						Log($"Preview ready: {result.Area.Width:0.#} x {result.Area.Height:0.#} mm, scanned as {result.Image.Width} x {result.Image.Height} pixels{(result.Dpi is { } d ? $" (asked for {d:G} dpi)" : "")}. Drag over it to choose the area to scan; click to clear. Then the arrow keys slide the area by 1 mm and Shift+arrows resize it.");

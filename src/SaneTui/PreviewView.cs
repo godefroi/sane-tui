@@ -29,7 +29,7 @@ internal sealed class PreviewView : View
 
 	private readonly Surface _surface;
 
-	private PreviewResult? _result;
+	private Picture? _picture;
 	private PreviewGeometry? _geometry;
 	private Color[,]? _pixels;
 	private (int Columns, int Rows, Size? Cell, bool Rotated) _builtFor;
@@ -57,10 +57,7 @@ internal sealed class PreviewView : View
 
 	public string Placeholder { get; set; } = "A preview will appear here.";
 
-	public bool HasPreview => _result is not null;
-
-	/// <summary>The part of the bed the picture shows, or null without a preview.</summary>
-	public SaneScanArea? Area => _result?.Area;
+	public bool HasPreview => _picture is not null;
 
 	/// <summary>
 	/// Shows the picture turned half way round, for a page laid on the bed upside-down. The selection is in what the user sees, so
@@ -76,12 +73,13 @@ internal sealed class PreviewView : View
 
 			_rotated = value;
 
-			if (_result is null) {
+			// a saved page is shown as it was saved, already turned if it was asked to be
+			if (_picture is not { Selectable: true } picture) {
 				return;
 			}
 
 			if (_selection is not null) {
-				_selection = _selection.Mirrored(_result.Area);
+				_selection = _selection.Mirrored(picture.Area);
 
 				SelectionChanged?.Invoke(_selection);
 			}
@@ -105,16 +103,29 @@ internal sealed class PreviewView : View
 	}
 
 	/// <summary>Shows a new preview, or clears it with null. Any selection belonged to the old picture, so it goes too.</summary>
-	public void SetPreview(PreviewResult? result)
+	public void SetPreview(PreviewResult? result) =>
+		Show(result is null ? null : new Picture(result.Image.Width, result.Image.Height, result.Area, () => ImageWriter.ToMagick(result.Image), Selectable: true));
+
+	/// <summary>Shows a saved page from its file, with no area to choose: it's a page already scanned, not the bed.</summary>
+	public void ShowPage(string path)
 	{
-		_result = result;
+		var info = new MagickImageInfo(path);
+
+		Show(new Picture((int)info.Width, (int)info.Height, new SaneScanArea(0, 0, info.Width, info.Height), () => new MagickImage(path), Selectable: false));
+	}
+
+	private bool RotatedNow => _rotated && _picture is { Selectable: true };
+
+	private void Show(Picture? picture)
+	{
+		_picture = picture;
 		_pixels = null;
 		_geometry = null;
 		_selection = null;
 		_dragStart = null;
 		_surfaceCurrent = false;
 
-		if (result is null) {
+		if (picture is null) {
 			_surface.Visible = false;
 			_surface.Image = null;
 		}
@@ -135,7 +146,7 @@ internal sealed class PreviewView : View
 
 		WatchForGraphicsSupport();
 
-		if (_result is null) {
+		if (_picture is null) {
 			_surface.Visible = false;
 			DrawPlaceholder(columns, rows);
 
@@ -145,7 +156,7 @@ internal sealed class PreviewView : View
 		// the picture is rebuilt only when the view's size or the terminal's graphics support changes
 		var cell = RasterProtocol()?.Cell;
 
-		if (_geometry is null || _pixels is null || _builtFor != (columns, rows, cell, Rotated)) {
+		if (_geometry is null || _pixels is null || _builtFor != (columns, rows, cell, RotatedNow)) {
 			Rebuild(columns, rows, cell);
 		}
 
@@ -186,11 +197,11 @@ internal sealed class PreviewView : View
 			_ => (0d, 0d, 0d, 0d),
 		};
 
-		if ((dx, dy, dw, dh) == (0, 0, 0, 0) || _result is not { } result || _selection is not { } selection || _dragStart is not null) {
+		if ((dx, dy, dw, dh) == (0, 0, 0, 0) || _picture is not { Selectable: true } picture || _selection is not { } selection || _dragStart is not null) {
 			return base.OnKeyDown(key);
 		}
 
-		_selection = dw == 0 && dh == 0 ? selection.Moved(result.Area, dx, dy) : selection.Resized(result.Area, dw, dh);
+		_selection = dw == 0 && dh == 0 ? selection.Moved(picture.Area, dx, dy) : selection.Resized(picture.Area, dw, dh);
 
 		SelectionChanged?.Invoke(_selection);
 		RefreshSurface();
@@ -203,7 +214,7 @@ internal sealed class PreviewView : View
 	// instead of using its own mouse handling (which pans and zooms), so a drag means the same thing wherever it starts.
 	private bool HandleMouse(Mouse mouse)
 	{
-		if (_geometry is not { } geometry) {
+		if (_geometry is not { } geometry || _picture is not { Selectable: true }) {
 			return false;
 		}
 
@@ -392,10 +403,10 @@ internal sealed class PreviewView : View
 	// handled as they are for files, and averaging while shrinking keeps text legible.
 	private void Rebuild(int columns, int rows, Size? cell)
 	{
-		_builtFor = (columns, rows, cell, Rotated);
+		_builtFor = (columns, rows, cell, RotatedNow);
 		_surfaceCurrent = false;
 
-		if (_result is not { } result || columns < 1 || rows < 1) {
+		if (_picture is not { } picture || columns < 1 || rows < 1) {
 			_geometry = null;
 			_pixels = null;
 
@@ -403,14 +414,14 @@ internal sealed class PreviewView : View
 		}
 
 		var geometry = cell is { } c
-			? new PreviewGeometry(columns, rows, result.Image.Width, result.Image.Height, result.Area, c.Width, c.Height)
-			: new PreviewGeometry(columns, rows, result.Image.Width, result.Image.Height, result.Area);
+			? new PreviewGeometry(columns, rows, picture.Width, picture.Height, picture.Area, c.Width, c.Height)
+			: new PreviewGeometry(columns, rows, picture.Width, picture.Height, picture.Area);
 
-		using var magick = ImageWriter.ToMagick(result.Image);
+		using var magick = picture.Load();
 
 		magick.Depth = 8;
 
-		if (Rotated) {
+		if (RotatedNow) {
 			magick.Rotate(180);
 		}
 
@@ -453,6 +464,9 @@ internal sealed class PreviewView : View
 
 		return new SixelEncoder { Quantizer = { MaxColors = 256, PaletteBuildingAlgorithm = new FixedPalette(new MedianCutPalette().BuildPalette(sample, 256)) } };
 	}
+
+	// What's being shown: the bed preview (an area can be chosen on it) or a saved page. Load makes a fresh image each time it's called.
+	private sealed record Picture(int Width, int Height, SaneScanArea Area, Func<MagickImage> Load, bool Selectable);
 
 	// The picture's own view. It never takes focus and hands the mouse to its owner.
 	private sealed class Surface(PreviewView owner) : ImageView
