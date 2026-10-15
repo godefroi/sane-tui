@@ -413,6 +413,14 @@ internal sealed class ScanWindow : Window
 			return StepView(key == Key.PageDown ? 1 : -1) || base.OnKeyDown(key);
 		}
 
+		// Tab doesn't leave the preview pane by itself: once the picture has focus (a click gives it), it stays there. So hand focus
+		// back to the controls from here, at the ends of their tab order.
+		if (_previewFrame.HasFocus && (key == Key.Tab || key == Key.Tab.WithShift)) {
+			(key == Key.Tab ? (View)_scanner : _rotate).SetFocus();
+
+			return true;
+		}
+
 		return base.OnKeyDown(key);
 	}
 
