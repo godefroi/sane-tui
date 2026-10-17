@@ -104,7 +104,7 @@ async function loadDevices(refresh = false) {
 	}
 }
 
-async function loadCapabilities() {
+async function loadCapabilities(source = null) {
 	caps = null;
 
 	const name = $('device').value;
@@ -116,7 +116,7 @@ async function loadCapabilities() {
 	remember('device', name);
 
 	try {
-		caps = await api(`api/capabilities?device=${encodeURIComponent(name)}`);
+		caps = await api(`api/capabilities?device=${encodeURIComponent(name)}${source ? `&source=${encodeURIComponent(source)}` : ""}`);
 	} catch (error) {
 		say(error.message, error.status !== 409);
 
@@ -132,10 +132,36 @@ async function loadCapabilities() {
 	}
 
 	fill($('resolution'), caps.resolutions, caps.defaultResolution, v => `${v} dpi`);
+	drawSwitches();
 	setPaperChoices('full');
 	updateForSource();
 	say('Ready.');
 }
+
+// the scanner's own on/off options as checkboxes, starting at the value the scanner has; only the ones changed are sent with a scan
+function drawSwitches() {
+	const box = $('switches');
+
+	box.hidden = caps.switches.length === 0;
+	box.replaceChildren(box.querySelector('legend'), ...caps.switches.map(option => {
+		const label = document.createElement('label');
+		const input = document.createElement('input');
+
+		input.type = 'checkbox';
+		input.checked = option.value;
+		input.dataset.name = option.name;
+		input.dataset.initial = String(option.value);
+		input.disabled = busy();
+		label.title = option.description;
+		label.append(input, ` ${option.title}`);
+
+		return label;
+	}));
+}
+
+const changedSwitches = () => [...document.querySelectorAll('#switches input')]
+	.filter(input => String(input.checked) !== input.dataset.initial)
+	.map(input => `${input.dataset.name}=${input.checked}`);
 
 // a feeder feeds sheets by itself, so scanning everything in it is the sensible default; a preview is of a bed you can lay something on
 function updateForSource() {
@@ -204,8 +230,12 @@ function render() {
 	$('progress').hidden = snap.progress === null;
 	$('progress').value = snap.progress ?? 0;
 
-	for (const id of ['device', 'refresh', 'source', 'mode', 'resolution', 'paper', 'allPages', 'preview', 'scan', 'discard', 'deletePage']) {
+	for (const id of ['device', 'refresh', 'source', 'mode', 'resolution', 'paper', 'allPages', 'deskew', 'trim', 'preview', 'scan', 'discard', 'deletePage']) {
 		$(id).disabled = wasBusy;
+	}
+
+	for (const input of document.querySelectorAll('#switches input')) {
+		input.disabled = wasBusy;
 	}
 
 	$('cancel').hidden = !(snap.status === 'previewing' || snap.status === 'scanning');
@@ -511,6 +541,9 @@ function scanRequest() {
 		resolution: Number($('resolution').value),
 		allPages: !$('allPagesLabel').hidden && $('allPages').checked,
 		rotate180: rotated(),
+		deskew: $('deskew').checked,
+		trim: $('trim').checked,
+		settings: changedSwitches(),
 	};
 
 	if (paper === 'selection' && selection) {
@@ -525,7 +558,13 @@ function scanRequest() {
 function wire() {
 	$('device').addEventListener('change', () => { loadCapabilities(); });
 	$('refresh').addEventListener('click', () => loadDevices(true));
-	$('source').addEventListener('change', updateForSource);
+	// a different source can have different modes, resolutions and options, and a different bed, so the options are read again
+	$('source').addEventListener('change', () => {
+		selection = null;
+		draw();
+		updateForSource(); // right away: the feeder choices don't depend on what the scanner says next
+		loadCapabilities($('source').value);
+	});
 	$('rotate').addEventListener('change', draw);
 	$('paper').addEventListener('change', () => {
 		// choosing anything but the selection gives the selection up, so the box never claims an area the scan won't use

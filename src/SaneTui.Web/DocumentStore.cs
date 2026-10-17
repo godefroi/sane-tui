@@ -1,3 +1,4 @@
+using ImageMagick;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
@@ -41,7 +42,7 @@ internal sealed partial class DocumentStore
 	}
 
 	/// <summary>Writes a scanned page into the current document, starting one if there isn't one.</summary>
-	public PageInfo AddPage(SaneImage image, double? dpi, bool rotate180)
+	public PageInfo AddPage(SaneImage image, double? dpi, PageOptions options)
 	{
 		string id;
 		string path;
@@ -53,9 +54,10 @@ internal sealed partial class DocumentStore
 			path = FileFor(_current.Id, id);
 		}
 
-		ImageWriter.WriteJpeg(image, dpi, path, overwrite: false, rotate180);
+		ImageWriter.WriteJpeg(image, dpi, path, overwrite: false, options);
 
-		var page = new PageInfo(id, image.Width, image.Height);
+		var info = new MagickImageInfo(path); // the size on disk: trimming changes it
+		var page = new PageInfo(id, (int)info.Width, (int)info.Height);
 
 		lock (_lock) {
 			_current!.Pages.Add(page);

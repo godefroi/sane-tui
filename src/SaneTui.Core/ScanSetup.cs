@@ -15,7 +15,11 @@ namespace SaneTui;
 /// <param name="IfExists">What to do if the output files are already there. The default refuses, so nothing is ever replaced unasked.</param>
 /// <param name="Left">Millimeters from the left edge of the scanner to the left of the area. Only meaningful with a <paramref name="Width"/> and <paramref name="Height"/>.</param>
 /// <param name="Top">Millimeters from the top edge of the scanner to the top of the area.</param>
-internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings, string? Paper = null, ExistingFiles IfExists = ExistingFiles.Fail, double Left = 0, double Top = 0, bool Rotate180 = false);
+internal sealed record ScanRequest(string? Device, string Output, string? Source, string? Mode, int? Depth, double Resolution, double? Width, double? Height, bool Batch, int? MaxPages, IReadOnlyList<string> Settings, string? Paper = null, ExistingFiles IfExists = ExistingFiles.Fail, double Left = 0, double Top = 0, bool Rotate180 = false, bool Deskew = false, bool Trim = false)
+{
+	/// <summary>The corrections to make to each page.</summary>
+	public PageOptions Page => new(Rotate180, Deskew, Trim);
+}
 
 /// <summary>Turning a <see cref="ScanRequest"/> into settings on an open scanner, shared by scanning and previewing.</summary>
 internal static class ScanSetup

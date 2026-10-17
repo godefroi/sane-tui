@@ -8,6 +8,15 @@ internal static class ImageWriter
 {
 	private const int JpegQuality = 90; // ImageMagick's default of 75 shows visible artifacts around text
 
+	// how dark a pixel can be and still count as page when looking for the page's edge (ImageMagick's own suggestion for -deskew is 40%)
+	private const double DeskewThreshold = 40;
+
+	// how far a pixel can differ from the corner color and still count as background; scanner backgrounds are noisy, not flat
+	private const double TrimFuzz = 10;
+
+	// trimming that would leave less than this share of the picture is assumed to be a mistake
+	private const double MinimumTrimmedShare = 0.1;
+
 	public static bool IsJpeg(string path) => Path.GetExtension(path).ToLowerInvariant() is ".jpg" or ".jpeg";
 
 	/// <summary>
@@ -15,19 +24,17 @@ internal static class ImageWriter
 	/// it's written under a temporary name and renamed, so an interrupted scan can't leave a half-written file behind.
 	/// </summary>
 	/// <param name="dpi">The scan resolution, so viewers and printers know the physical size. Null if unknown.</param>
-	/// <param name="rotate180">Turn the picture half way round, for a page that was laid on the scanner upside-down.</param>
+	/// <param name="options">Corrections to make to the picture first.</param>
 	/// <param name="overwrite">
 	/// Replace a file that is already there. Without it an existing file is never touched: the image is saved under a free
 	/// name instead (<c>scan (2).jpg</c>), because a scanned page can't be thrown away and an existing file can't be replaced unasked.
 	/// </param>
 	/// <returns>The path actually written, which differs from <paramref name="path"/> when that name was taken.</returns>
-	public static string WriteJpeg(SaneImage image, double? dpi, string path, bool overwrite = false, bool rotate180 = false)
+	public static string WriteJpeg(SaneImage image, double? dpi, string path, bool overwrite = false, PageOptions options = default)
 	{
 		using var magick = ToMagick(image);
 
-		if (rotate180) {
-			magick.Rotate(180);
-		}
+		Correct(magick, options);
 
 		if (dpi is { } d) {
 			magick.Density = new Density(d, DensityUnit.PixelsPerInch);
@@ -57,6 +64,40 @@ internal static class ImageWriter
 
 			throw;
 		}
+	}
+
+	/// <summary>Applies the corrections in a fixed order: turn, then straighten, then trim (trimming a crooked page would leave wedges of background).</summary>
+	internal static void Correct(MagickImage magick, PageOptions options)
+	{
+		if (options.Rotate180) {
+			magick.Rotate(180);
+		}
+
+		if (options.Deskew) {
+			// Deskewing turns the page, and the corners that leaves empty are filled with the background color: so that it's the
+			// scanner's background (a black lid, white feeder rollers) and not white, it's taken from the picture's corner.
+			magick.BackgroundColor = CornerColor(magick);
+			magick.Deskew(new Percentage(DeskewThreshold));
+			magick.ResetPage();
+		}
+
+		if (options.Trim) {
+			magick.ColorFuzz = new Percentage(TrimFuzz);
+
+			// A page that is all one color (a blank sheet) is all "background" as far as trimming goes, and would be cut down to a
+			// pixel; so is one with so little left that trimming has plainly misjudged it. Those are kept as they are.
+			if (magick.BoundingBox is { } box && (double)box.Width * box.Height >= MinimumTrimmedShare * magick.Width * magick.Height) {
+				magick.Crop(box);
+				magick.ResetPage();
+			}
+		}
+	}
+
+	private static IMagickColor<ushort> CornerColor(MagickImage magick)
+	{
+		using var pixels = magick.GetPixels();
+
+		return pixels.GetPixel(0, 0).ToColor()!;
 	}
 
 	// Moving without overwriting fails if the name is taken, even if it was taken a moment after we looked, so there's no gap

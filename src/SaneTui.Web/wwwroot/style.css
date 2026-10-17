@@ -61,6 +61,8 @@ section {
 #document { grid-column: 1 / -1; }
 
 label { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+fieldset { border: 1px solid var(--line); border-radius: 6px; margin: 0 0 8px; padding: 6px 10px 0; }
+legend { font-size: 13px; color: var(--muted); }
 label:has(input[type=checkbox]) { flex-direction: row; align-items: center; gap: 8px; font-size: 15px; color: var(--text); }
 .row { display: flex; gap: 8px; }
 .row select { flex: 1; min-width: 0; }

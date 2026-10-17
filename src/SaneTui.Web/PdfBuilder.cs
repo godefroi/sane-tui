@@ -6,7 +6,7 @@ namespace SaneTui.Web;
 /// <summary>
 /// Writes a PDF with one page per JPEG picture. A PDF can hold a JPEG exactly as it is (the DCTDecode filter), so each file's
 /// bytes are copied in untouched: nothing is compressed a second time, and the original picture can be pulled back out of the PDF
-/// byte for byte. (Magick.NET's PDF writer was tried first and re-encodes the pictures.)
+/// byte for byte. (Going through Magick.NET would not do that: its PDF writer encodes the pictures again.)
 /// </summary>
 internal static class PdfBuilder
 {

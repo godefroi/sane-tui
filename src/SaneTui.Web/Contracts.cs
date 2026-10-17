@@ -16,9 +16,13 @@ internal sealed record PreviewInfo(int Version, SaneScanArea Area, int PixelWidt
 
 internal sealed record ChoiceSet(IReadOnlyList<string> Choices, string Selected);
 
-internal sealed record Capabilities(string Device, ChoiceSet? Sources, ChoiceSet? Modes, IReadOnlyList<string> Feeders, IReadOnlyList<double> Resolutions, double DefaultResolution, IReadOnlyList<string> Papers);
+/// <summary>An on/off option the scanner has (a driver's own, such as one that straightens pages in the feeder), offered as a checkbox.</summary>
+internal sealed record SwitchOption(string Name, string Title, string Description, bool Value);
+
+internal sealed record Capabilities(string Device, ChoiceSet? Sources, ChoiceSet? Modes, IReadOnlyList<string> Feeders, IReadOnlyList<double> Resolutions, double DefaultResolution, IReadOnlyList<string> Papers, IReadOnlyList<SwitchOption> Switches);
 
 internal sealed record PreviewRequest(string Device, string? Source);
 
 /// <param name="Left">Where the area starts, in millimeters on the scanner's bed (not as seen on a rotated preview).</param>
-internal sealed record ScanJobRequest(string Device, string? Source, string? Mode, double Resolution, string? Paper, double? Left, double? Top, double? Width, double? Height, bool AllPages, bool Rotate180);
+/// <param name="Settings">Other scanner options to set, as <c>name=value</c> (only on/off options are offered by the page).</param>
+internal sealed record ScanJobRequest(string Device, string? Source, string? Mode, double Resolution, string? Paper, double? Left, double? Top, double? Width, double? Height, bool AllPages, bool Rotate180, bool Deskew = false, bool Trim = false, IReadOnlyList<string>? Settings = null);

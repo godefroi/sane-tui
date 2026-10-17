@@ -27,8 +27,8 @@ public class DocumentStoreTests
 		using var dir = new TempFolder();
 		var store = Store(dir.Path);
 
-		store.AddPage(Picture(seed: 0), 150, rotate180: false);
-		store.AddPage(Picture(seed: 1), 150, rotate180: false);
+		store.AddPage(Picture(seed: 0), 150, default);
+		store.AddPage(Picture(seed: 1), 150, default);
 
 		var again = Store(dir.Path);
 
@@ -43,8 +43,8 @@ public class DocumentStoreTests
 		using var dir = new TempFolder();
 		var store = Store(dir.Path);
 
-		store.AddPage(Picture(), 150, false);
-		store.AddPage(Picture(), 150, false);
+		store.AddPage(Picture(), 150, default);
+		store.AddPage(Picture(), 150, default);
 
 		var path = store.PagePath("p0001")!;
 
@@ -52,7 +52,7 @@ public class DocumentStoreTests
 		await Assert.That(File.Exists(path)).IsFalse();
 		await Assert.That(store.DeletePage("p0001")).IsFalse();
 
-		var next = store.AddPage(Picture(), 150, false);
+		var next = store.AddPage(Picture(), 150, default);
 
 		await Assert.That(next.Id).IsEqualTo("p0003"); // a cached thumbnail of p0001 can't be mistaken for a new page
 		await Assert.That(store.Current!.Pages.Select(p => p.Id)).IsEquivalentTo(["p0002", "p0003"]);
@@ -69,7 +69,7 @@ public class DocumentStoreTests
 		using var dir = new TempFolder();
 		var store = Store(dir.Path);
 
-		store.AddPage(Picture(), 150, false);
+		store.AddPage(Picture(), 150, default);
 
 		await Assert.That(store.PagePath(id)).IsNull();
 	}
@@ -80,7 +80,7 @@ public class DocumentStoreTests
 		using var dir = new TempFolder();
 		var store = Store(dir.Path);
 
-		store.AddPage(Picture(), 150, false);
+		store.AddPage(Picture(), 150, default);
 
 		var path = store.PagePath("p0001")!;
 
@@ -97,8 +97,8 @@ public class DocumentStoreTests
 		using var dir = new TempFolder();
 		var store = Store(dir.Path);
 
-		store.AddPage(Picture(seed: 0), 150, false);
-		store.AddPage(Picture(seed: 2), 150, false);
+		store.AddPage(Picture(seed: 0), 150, default);
+		store.AddPage(Picture(seed: 2), 150, default);
 
 		await using var pdf = PdfBuilder.Build(store.PagePaths());
 		using var copy = new MemoryStream();

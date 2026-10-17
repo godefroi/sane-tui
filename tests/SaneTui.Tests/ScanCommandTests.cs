@@ -245,6 +245,25 @@ public class ScanCommandTests
 		await Assert.That(log).Contains("doesn't exist");
 		await Assert.That(log).DoesNotContain("Scanning with");
 	}
+	[Test]
+	public async Task Deskew_AndTrim_AreAppliedToTheSavedPage_AndTheMessageGivesItsRealSize()
+	{
+		RequireLibsane();
+
+		using var dir = new TempDirectory();
+		var output = Path.Combine(dir.Path, "scan.jpg");
+
+		var (exitCode, log) = await Run(Request(output, resolution: 100, width: 50, height: 30) with { Deskew = true, Trim = true });
+
+		await Assert.That(exitCode).IsEqualTo(0);
+
+		// the test scanner's picture is one flat color, which trimming must leave whole rather than cut to nothing
+		var info = new MagickImageInfo(output);
+
+		await Assert.That((int)info.Width).IsGreaterThan(150);
+		await Assert.That(log).Contains($"({info.Width} x {info.Height} pixels");
+	}
+
 
 	[Test]
 	public async Task SinglePage_WritesAJpegOfTheRequestedAreaAndResolution()

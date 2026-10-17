@@ -94,7 +94,11 @@ internal sealed class ScannerService(DocumentStore documents) : IAsyncDisposable
 
 	/// <summary>What a scanner offers, for the page to build its choices from. The scanner is opened only long enough to read its options.</summary>
 	/// <exception cref="BusyException">The scanner is in use.</exception>
-	public async Task<Capabilities> GetCapabilitiesAsync(string device)
+	/// <param name="source">
+	/// Read the options as they are with this source selected: the modes, resolutions and the scanner's own on/off options
+	/// often differ between a flatbed and a feeder. Null leaves the scanner's current source.
+	/// </param>
+	public async Task<Capabilities> GetCapabilitiesAsync(string device, string? source = null)
 	{
 		using var operation = Begin("reading options");
 
@@ -102,10 +106,20 @@ internal sealed class ScannerService(DocumentStore documents) : IAsyncDisposable
 
 		await using var open = await sane.OpenAsync(device);
 
+		if (source is not null && StringChoices.For(open.Options.FirstOrDefault(o => o.Name == "source")) is { } offered && offered.Choices.Contains(source)) {
+			await open.SetAsync(open.GetOption("source"), source); // the library refreshes the options a change affects
+		}
+
 		var options = open.Options;
 		var sources = StringChoices.For(options.FirstOrDefault(o => o.Name == "source"));
 		var modes = StringChoices.For(options.FirstOrDefault(o => o.Name == "mode"));
 		var resolutions = ResolutionPresets.For(options.FirstOrDefault(o => o.Name == "resolution"));
+
+		// "preview" is what the Preview button turns on by itself; as a checkbox for real scans it would only be a way to spoil them
+		var switches = options
+			.Where(o => o is { IsSettable: true, Type: SaneValueType.Bool } && o.Name is not ("" or "preview"))
+			.Select(o => new SwitchOption(o.Name, o.Title, o.Description, o.Value is true))
+			.ToList();
 
 		return new Capabilities(
 			device,
@@ -114,7 +128,8 @@ internal sealed class ScannerService(DocumentStore documents) : IAsyncDisposable
 			[.. sources?.Choices.Where(FeederSources.Looks) ?? []],
 			resolutions,
 			ResolutionPresets.Default(resolutions),
-			[.. PaperSizes.Names]);
+			[.. PaperSizes.Names],
+			switches);
 	}
 
 	/// <summary>Starts a preview of the whole bed in the background.</summary>
@@ -150,7 +165,7 @@ internal sealed class ScannerService(DocumentStore documents) : IAsyncDisposable
 	/// <exception cref="CommandException">The request makes no sense, for example a paper size together with an area.</exception>
 	public void StartScan(ScanJobRequest job)
 	{
-		var request = new ScanRequest(job.Device, "", job.Source, job.Mode, null, job.Resolution, job.Width, job.Height, job.AllPages, null, [], job.Paper, ExistingFiles.Fail, job.Left ?? 0, job.Top ?? 0, job.Rotate180);
+		var request = new ScanRequest(job.Device, "", job.Source, job.Mode, null, job.Resolution, job.Width, job.Height, job.AllPages, null, job.Settings ?? [], job.Paper, ExistingFiles.Fail, job.Left ?? 0, job.Top ?? 0, job.Rotate180, job.Deskew, job.Trim);
 		var (width, height) = ScanSetup.RequestedSize(request);
 		var operation = Begin("scanning");
 
@@ -208,23 +223,46 @@ internal sealed class ScannerService(DocumentStore documents) : IAsyncDisposable
 
 		try {
 			if (request.Batch) {
-				await foreach (var image in device.ScanBatchAsync(Reporter(operation), operation.Token).WithCancellation(operation.Token)) {
-					Save(image, dpi, request.Rotate180);
-					saved++;
+				// Pages are corrected and saved on their own task, so a slow one (a deskew takes a while) doesn't keep the feeder waiting
+				// between sheets. A few are allowed to queue; beyond that the scanner waits, which keeps memory bounded.
+				var pending = Channel.CreateBounded<SaneImage>(new BoundedChannelOptions(4) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
+				var saver = Task.Run(async () => {
+					try {
+						await foreach (var queued in pending.Reader.ReadAllAsync()) {
+							Save(queued, dpi, request.Page);
+							saved++;
+						}
+					} catch (Exception ex) {
+						pending.Writer.TryComplete(ex); // so the scanning loop isn't left waiting on a queue nobody empties
+
+						throw;
+					}
+				});
+
+				try {
+					await foreach (var image in device.ScanBatchAsync(Reporter(operation), operation.Token).WithCancellation(operation.Token)) {
+						await pending.Writer.WriteAsync(image, operation.Token);
+					}
+				} finally {
+					// whatever stopped the scanning, pages already scanned are still saved; and a failure to save is the real cause of any
+					// "channel closed" the loop saw, so it's what gets reported
+					pending.Writer.TryComplete();
+
+					await saver;
 				}
 
 				Log($"The feeder is empty. Scanned {saved} page(s).");
 			} else {
-				Save(await device.ScanAsync(Reporter(operation), operation.Token), dpi, request.Rotate180);
+				Save(await device.ScanAsync(Reporter(operation), operation.Token), dpi, request.Page);
 			}
 		} catch (SaneException ex) when (request.Batch && saved == 0 && ex.Status == SaneStatus.NoDocs) {
 			Log("The document feeder is empty.", error: true);
 		}
 	}
 
-	private void Save(SaneImage image, double? dpi, bool rotate180)
+	private void Save(SaneImage image, double? dpi, PageOptions options)
 	{
-		var page = documents.AddPage(image, dpi, rotate180);
+		var page = documents.AddPage(image, dpi, options);
 
 		Log($"Saved a page ({page.Width} x {page.Height} pixels{(dpi is { } d ? $", {d:G} dpi" : "")}).");
 	}

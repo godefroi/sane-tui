@@ -1,3 +1,4 @@
+using ImageMagick;
 using System.Globalization;
 using SaneTui.Sane;
 
@@ -87,7 +88,7 @@ internal static class ScanCommand
 
 						await foreach (var page in device.ScanBatchAsync(pageProgress, cancellationToken).WithCancellation(cancellationToken)) {
 							progress?.Finish();
-							var path = Save(page, dpi, BatchPath(output, saved + 1), overwrite, request.Rotate180, log);
+							var path = Save(page, dpi, BatchPath(output, saved + 1), overwrite, request.Page, log);
 
 							pageSaved?.Invoke(path);
 
@@ -111,7 +112,7 @@ internal static class ScanCommand
 						var page = await device.ScanAsync(pageProgress, cancellationToken);
 
 						progress?.Finish();
-						var path = Save(page, dpi, output, overwrite, request.Rotate180, log);
+						var path = Save(page, dpi, output, overwrite, request.Page, log);
 
 						pageSaved?.Invoke(path);
 
@@ -219,9 +220,9 @@ internal static class ScanCommand
 	private static string BatchPath(string output, int page) =>
 		Path.Combine(Path.GetDirectoryName(output) ?? "", $"{Path.GetFileNameWithoutExtension(output)}-{page:000}{Path.GetExtension(output)}");
 
-	private static string Save(SaneImage page, double? dpi, string path, bool overwrite, bool rotate180, TextWriter log)
+	private static string Save(SaneImage page, double? dpi, string path, bool overwrite, PageOptions options, TextWriter log)
 	{
-		var written = ImageWriter.WriteJpeg(page, dpi, path, overwrite, rotate180);
+		var written = ImageWriter.WriteJpeg(page, dpi, path, overwrite, options);
 
 		// the up-front check already handled files that existed when the scan started; this is for one that appeared since,
 		// so the page is kept under another name instead of being lost or replacing something
@@ -229,7 +230,9 @@ internal static class ScanCommand
 			log.WriteLine($"{Path.GetFileName(path)} already exists, so this page was saved as {Path.GetFileName(written)}.");
 		}
 
-		log.WriteLine($"Saved {written} ({page.Width} x {page.Height} pixels{(dpi is { } d ? $", {d:G} dpi" : "")})");
+		var saved = new MagickImageInfo(written); // the size on disk: trimming changes it
+
+		log.WriteLine($"Saved {written} ({saved.Width} x {saved.Height} pixels{(dpi is { } d ? $", {d:G} dpi" : "")})");
 
 		return written;
 	}

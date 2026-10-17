@@ -185,7 +185,7 @@ public class ImageWriterTests
 		using var dir = new TempDirectory();
 		var path = Path.Combine(dir.Path, "page.jpg");
 
-		ImageWriter.WriteJpeg(new SaneImage(16, 16, SanePixelFormat.Gray, 8, 16, data), null, path, rotate180: true);
+		ImageWriter.WriteJpeg(new SaneImage(16, 16, SanePixelFormat.Gray, 8, 16, data), null, path, options: new PageOptions(Rotate180: true));
 
 		using var read = new MagickImage(path);
 

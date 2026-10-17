@@ -75,6 +75,8 @@ public class ApiTests
 			new { device = "test", resolution = 100, left = 0, top = 0, width = 0, height = 50 },
 			new { device = "test", resolution = 100, paper = "a4", left = 0, top = 0, width = 50, height = 50 }, // a paper size and an area
 			new { device = "test", resolution = 100, paper = "nonsense" },
+			new { device = "test", resolution = 100, settings = new[] { "mode=Color" } }, // only on/off options are accepted
+			new { device = "test", resolution = 100, settings = new[] { "../x=true" } },
 		};
 
 		foreach (var body in bad) {
@@ -184,5 +186,39 @@ public class ApiTests
 		await Assert.That(caps.GetProperty("sources").GetProperty("choices").EnumerateArray().Select(e => e.GetString())).Contains("Flatbed");
 		await Assert.That(caps.GetProperty("feeders").EnumerateArray().Select(e => e.GetString())).Contains("Automatic Document Feeder");
 		await Assert.That(caps.GetProperty("defaultResolution").GetDouble()).IsEqualTo(300d);
+	}
+
+	[Test]
+	public async Task TheCapabilitiesForAnotherSource_AreReadWithThatSourceSelected_AndOfferTheScannersOnOffOptions()
+	{
+		RequireLibsane();
+
+		using var app = new AppFactory();
+		using var client = app.SignedIn();
+
+		var caps = JsonDocument.Parse(await client.GetStringAsync("/api/capabilities?device=test&source=Automatic%20Document%20Feeder")).RootElement;
+
+		await Assert.That(caps.GetProperty("sources").GetProperty("selected").GetString()).IsEqualTo("Automatic Document Feeder");
+
+		var switches = caps.GetProperty("switches").EnumerateArray().Select(e => e.GetProperty("name").GetString()).ToList();
+
+		await Assert.That(switches).Contains("read-limit");
+		await Assert.That(switches).DoesNotContain("preview"); // the Preview button's own business
+	}
+
+	[Test]
+	public async Task AScanWithCorrectionsAndAScannerOption_Works()
+	{
+		RequireLibsane();
+
+		using var app = new AppFactory();
+		using var client = app.SignedIn();
+
+		await Scan(client, new { device = "test", resolution = 50, deskew = true, trim = true, settings = new[] { "read-limit=true" } });
+
+		var state = await WaitUntilIdleAsync(client);
+
+		await Assert.That(state.GetProperty("document").GetProperty("pages").GetArrayLength()).IsEqualTo(1);
+		await Assert.That(state.GetProperty("log").EnumerateArray().Any(l => l.GetProperty("error").GetBoolean())).IsFalse();
 	}
 }

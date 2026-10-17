@@ -45,10 +45,12 @@ var scanIfExists = new Option<ExistingFiles>("--if-exists") {
 	DefaultValueFactory = _ => ExistingFiles.Fail,
 };
 var scanRotate = new Option<bool>("--rotate-180") { Description = "Turn each saved page half way round, for a page laid on the scanner upside-down." };
+var scanDeskew = new Option<bool>("--deskew") { Description = "Straighten each page that was laid on the scanner crooked. This resamples the picture, softening it slightly, and takes a second or two a page." };
+var scanTrim = new Option<bool>("--trim") { Description = "Cut off the background around each page, found by the color of the picture's corner. Can cut into a page that has no margin." };
 var scanSet = new Option<string[]>("--set") { Description = "Set any other scanner option, as name=value. Can be repeated. Applied last.", Arity = ArgumentArity.ZeroOrMore };
 
 var scan = new Command("scan", "Scan a page, or everything in the document feeder, to JPEG files.") {
-	scanDevice, scanOutput, scanSource, scanMode, scanDepth, scanResolution, scanPaper, scanWidth, scanHeight, scanBatch, scanMaxPages, scanIfExists, scanRotate, scanSet,
+	scanDevice, scanOutput, scanSource, scanMode, scanDepth, scanResolution, scanPaper, scanWidth, scanHeight, scanBatch, scanMaxPages, scanIfExists, scanRotate, scanDeskew, scanTrim, scanSet,
 };
 
 scan.SetAction((parseResult, cancellationToken) => DiagCommand.GuardAsync(() => ScanCommand.RunAsync(
@@ -66,7 +68,9 @@ scan.SetAction((parseResult, cancellationToken) => DiagCommand.GuardAsync(() => 
 		parseResult.GetValue(scanSet) ?? [],
 		parseResult.GetValue(scanPaper),
 		parseResult.GetValue(scanIfExists),
-		Rotate180: parseResult.GetValue(scanRotate)),
+		Rotate180: parseResult.GetValue(scanRotate),
+		Deskew: parseResult.GetValue(scanDeskew),
+		Trim: parseResult.GetValue(scanTrim)),
 	Console.Error,
 	cancellationToken,
 	showProgress: !Console.IsErrorRedirected)));

@@ -76,7 +76,7 @@ api.MapGet("/events", async (HttpContext context, ScannerService scanner, IOptio
 api.MapGet("/devices", async (ScannerService scanner, bool? refresh) =>
 	(await scanner.GetDevicesAsync(refresh ?? false)).Select(d => new { d.Name, d.Vendor, d.Model, d.Type }));
 
-api.MapGet("/capabilities", async (ScannerService scanner, string device) => await scanner.GetCapabilitiesAsync(device));
+api.MapGet("/capabilities", async (ScannerService scanner, string device, string? source) => await scanner.GetCapabilitiesAsync(device, source));
 
 api.MapPost("/preview", (ScannerService scanner, PreviewRequest request) => {
 	Require(!string.IsNullOrWhiteSpace(request.Device), "Choose a scanner first.");
@@ -94,6 +94,8 @@ api.MapPost("/scan", (ScannerService scanner, ScanJobRequest job) => {
 	Require(double.IsFinite(job.Resolution) && job.Resolution is > 0 and <= 4800, "The resolution isn't a sensible number of dots per inch.");
 	Require(job.Left is null && job.Top is null && job.Width is null && job.Height is null || job.Left is >= 0 && job.Top is >= 0 && job.Width is > 0 && job.Height is > 0, "An area needs a left, top, width and height, all in millimeters and positive.");
 	Require(new[] { job.Left, job.Top, job.Width, job.Height }.All(v => v is null || double.IsFinite(v.Value)), "The area has to be made of real numbers.");
+
+	Require(job.Settings is null || job.Settings.Count <= 32 && job.Settings.All(s => System.Text.RegularExpressions.Regex.IsMatch(s, "^[a-z0-9_-]{1,64}=(true|false)$")), "Scanner options have to look like name=true or name=false.");
 
 	scanner.StartScan(job);
 

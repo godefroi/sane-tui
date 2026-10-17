@@ -47,6 +47,8 @@ internal sealed class ScanWindow : Window
 	private readonly Button _quit = new() { Y = 5, Text = "_Quit" };
 	private readonly Button _showLog = new() { Y = 5, Text = "_Log" };
 	private readonly CheckBox _rotate = new() { Y = 5, Text = "_Rotate 180°" };
+	private readonly CheckBox _deskew = new() { Y = 5, Text = "_Deskew" };
+	private readonly CheckBox _trim = new() { Y = 5, Text = "_Trim" };
 	private readonly ProgressBar _bar = new() { X = 0, Y = 0, Width = Dim.Fill(), Height = 1, Visible = false };
 	private readonly Label _earlier = new() { X = 1, Y = 1, Width = Dim.Fill(1), Text = "" };
 	private readonly Label _latest = new() { X = 1, Y = 2, Width = Dim.Fill(1), Text = "" };
@@ -78,6 +80,8 @@ internal sealed class ScanWindow : Window
 		_quit.X = Pos.Right(_preview) + 2;
 		_showLog.X = Pos.Right(_quit) + 2;
 		_rotate.X = Pos.Right(_showLog) + 3;
+		_deskew.X = Pos.Right(_rotate) + 3;
+		_trim.X = Pos.Right(_deskew) + 3;
 
 		// A frame draws its lines and title in its own scheme, and its contents inherit it. So the frames take the accent
 		// scheme and everything inside sits on a panel with the normal one.
@@ -95,7 +99,7 @@ internal sealed class ScanWindow : Window
 			new Label { X = RightLabel, Y = 2, Text = "Page size" }, _paper,
 			new Label { X = LeftLabel, Y = 3, Text = "Save to" }, _output,
 			_allPages,
-			_scan, _preview, _quit, _showLog, _rotate);
+			_scan, _preview, _quit, _showLog, _rotate, _deskew, _trim);
 
 		// Fixed height at the bottom: the progress bar (only while scanning) and the last two status messages.
 		View status = new() { X = 0, Y = Pos.AnchorEnd(), Width = Dim.Fill(), Height = 3 };
@@ -487,7 +491,9 @@ internal sealed class ScanWindow : Window
 			ExistingFiles.Fail,
 			selection?.Left ?? 0,
 			selection?.Top ?? 0,
-			Rotated);
+			Rotated,
+			_deskew.Value == CheckState.Checked,
+			_trim.Value == CheckState.Checked);
 
 		// Asked before anything starts, while it costs nothing: a sheet already pulled into the scanner can't be put back.
 		if (OutputFiles.Existing(request.Output, request.Batch) is { Count: > 0 } existing) {
