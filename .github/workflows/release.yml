@@ -88,7 +88,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # The tags come from the git tag: v1.2.3 should give 1.2.3, 1.2, 1 and latest for a full release, and a pre-release (v1.2.3-rc.1) gets only
+      # The tags come from the git tag: v1.2.3 gives 1.2.3, 1.2, 1 and latest for a full release, and a pre-release (v1.2.3-rc.1) gets only
       # its own tag, as the release candidates did.
       - id: meta
         uses: docker/metadata-action@v6
