@@ -43,7 +43,9 @@ Scanners disagree about option names and values, so look at `dump` output for yo
 
 ## Releases
 
-A tag like `v1.2.3` publishes a release: the `sane-tui` program for Linux (x64 and arm64, a single file with .NET inside; it only needs SANE installed) to download from the [releases page](../../releases), and the web image as `ghcr.io/godefroi/sane-tui-web`.
+A tag like `v1.2.3` publishes a release: the `sane-tui` program for Linux (x64 and arm64, a single file with .NET inside; it only needs SANE installed) to download from the [releases page](../../releases), the web image as `ghcr.io/godefroi/sane-tui-web`, and the SANE library as the NuGet package [`SaneTui.Sane`](src/SaneTui.Sane/README.md). All three get the same version, and a tag with a suffix (`v1.2.3-rc.1`) makes a pre-release of each.
+
+Publishing to nuget.org uses [trusted publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing), so there is no key stored in the repository. It needs a policy on nuget.org (the owner and repository, and the workflow file `release.yml`) and the repository variable `NUGET_USER` set to the nuget.org user name that owns it. The package is built and checked on every push (`.github/scripts/check-package.sh`), but only a release publishes it, and a published version can't be taken back, only unlisted.
 
 ## Tests
 

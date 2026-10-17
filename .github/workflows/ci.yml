@@ -29,6 +29,23 @@ jobs:
       - name: Test
         run: dotnet test --solution sane-tui.slnx --configuration Release --no-build
 
+  # The NuGet package is built and checked on every change (nothing is published here). A published version can't be taken back,
+  # so what's inside is checked before a release ever gets to that point.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Pack
+        run: dotnet pack src/SaneTui.Sane --configuration Release -p:PackageVersion=0.0.0-ci -p:ContinuousIntegrationBuild=true --output dist
+
+      - name: Check what's in it
+        run: bash .github/scripts/check-package.sh dist/SaneTui.Sane.0.0.0-ci.nupkg SaneTui.Sane 0.0.0-ci
+
   # The image is built on every change, and started: a Dockerfile that builds is not the same as one that runs.
   web-image:
     runs-on: ubuntu-latest

@@ -112,8 +112,39 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           push: true
 
+  # The NuGet package for the SANE library. It's built and checked here and attached to the release; publishing it is the last job,
+  # after everything else has worked, because a published version can't be taken back.
+  package:
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Pack
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: dotnet pack src/SaneTui.Sane --configuration Release -p:PackageVersion="$VERSION" -p:ContinuousIntegrationBuild=true --output dist
+
+      - name: Check what's in it
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: bash .github/scripts/check-package.sh "dist/SaneTui.Sane.$VERSION.nupkg" SaneTui.Sane "$VERSION"
+
+      # named to be picked up with the programs by the release job
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sane-tui-package
+          path: dist/*.nupkg
+          if-no-files-found: error
+
   release:
-    needs: [version, tui, image]
+    needs: [version, tui, image, package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -133,7 +164,7 @@ jobs:
           PRERELEASE: ${{ needs.version.outputs.prerelease }}
           OWNER: ${{ github.repository_owner }}
         run: |
-          (cd dist && sha256sum ./*.tar.gz > SHA256SUMS)
+          (cd dist && sha256sum ./*.tar.gz ./*.nupkg > SHA256SUMS)
 
           cat > notes.md <<NOTES
           ## Install
@@ -144,9 +175,52 @@ jobs:
           **Web service:** \`docker pull ghcr.io/${OWNER,,}/sane-tui-web:${VERSION}\`. It needs a password: see the
           [web UI documentation](https://github.com/${GH_REPO}/blob/${TAG}/src/SaneTui.Web/README.md).
 
+          **SANE library for .NET:** \`dotnet add package SaneTui.Sane --version ${VERSION}\`, published to nuget.org once this release
+          is made. The package file is attached below too.
+
           NOTES
 
           flags=()
           [ "$PRERELEASE" = true ] && flags+=(--prerelease)
 
           gh release create "$TAG" dist/* --title "$TAG" --notes-file notes.md --generate-notes --verify-tag "${flags[@]}"
+
+  # Last, and only once everything else has worked: a version on nuget.org can't be taken back, only unlisted. It uses trusted
+  # publishing, so there is no stored key: GitHub vouches for this workflow, nuget.org checks that against the policy for the package,
+  # and gives back a key that lasts an hour. The policy (owner, repository, this file's name) is set on nuget.org. Running the job
+  # again is safe, because a version that is already there is skipped.
+  publish-nuget:
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # so GitHub will issue the token that is exchanged for the key; nothing else is needed
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: sane-tui-package
+          path: dist
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Check there's a nuget.org user to log in as
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER }}
+        run: |
+          if [ -z "$NUGET_USER" ]; then
+            echo "Set the repository variable NUGET_USER to the nuget.org user name (not the e-mail address) that owns the trusted publishing policy." >&2
+            exit 1
+          fi
+
+      # the key is asked for right before it's used, since it expires
+      - id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: dotnet nuget push "dist/SaneTui.Sane.$VERSION.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
