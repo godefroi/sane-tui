@@ -138,36 +138,118 @@ async function loadCapabilities(source = null) {
 	}
 
 	fill($('resolution'), caps.resolutions, caps.defaultResolution, v => `${v} dpi`);
+	loadOptionState();
 	drawSwitches();
 	setPaperChoices('full');
 	updateForSource();
 	say('Ready.');
 }
 
-// the scanner's own on/off options as checkboxes, starting at the value the scanner has; only the ones changed are sent with a scan
+// ---- the scanner's own on/off options
+
+// They start at the value the scanner has, and only the ones the person has changed are sent with a scan. The dialog lists all
+// of them with their help text; the ones ticked "Show in main panel" are also in the settings panel. What's pinned and what
+// has been chosen is kept in this browser, for each model of scanner (a scanner's address changes when it's replugged).
+let optionState = { pinned: new Set(), values: {} };
+
+const modelKey = () => {
+	const device = devices?.find(d => d.name === $('device').value);
+
+	return device ? `${device.vendor} ${device.model}` : $('device').value;
+};
+
+function loadOptionState() {
+	optionState = { pinned: new Set(), values: {} };
+
+	try {
+		const saved = JSON.parse(recall(`options:${modelKey()}`) ?? 'null');
+
+		if (saved && Array.isArray(saved.pinned) && saved.values && typeof saved.values === 'object') {
+			optionState = { pinned: new Set(saved.pinned.filter(n => typeof n === 'string')), values: Object.fromEntries(Object.entries(saved.values).filter(([, v]) => typeof v === 'boolean')) };
+		}
+	} catch { /* what's stored isn't ours to trust: start clean */ }
+}
+
+function saveOptionState() {
+	remember(`options:${modelKey()}`, JSON.stringify({ pinned: [...optionState.pinned], values: optionState.values }));
+}
+
+const optionValue = option => optionState.values[option.name] ?? option.value;
+
+// a checkbox for an option's value, kept in step with the same option shown elsewhere
+function valueBox(option) {
+	const input = document.createElement('input');
+
+	input.type = 'checkbox';
+	input.checked = optionValue(option);
+	input.disabled = busy();
+	input.addEventListener('change', () => {
+		optionState.values[option.name] = input.checked;
+		saveOptionState();
+		drawSwitches();
+	});
+
+	return input;
+}
+
 function drawSwitches() {
+	const switches = caps?.switches ?? [];
+	const pinned = switches.filter(o => optionState.pinned.has(o.name));
 	const box = $('switches');
 
-	box.hidden = caps.switches.length === 0;
-	box.replaceChildren(box.querySelector('legend'), ...caps.switches.map(option => {
-		const label = document.createElement('label');
-		const input = document.createElement('input');
+	$('optionsButton').hidden = switches.length === 0;
 
-		input.type = 'checkbox';
-		input.checked = option.value;
-		input.dataset.name = option.name;
-		input.dataset.initial = String(option.value);
-		input.disabled = busy();
+	box.hidden = pinned.length === 0;
+	box.replaceChildren(box.querySelector('legend'), ...pinned.map(option => {
+		const label = document.createElement('label');
+
 		label.title = option.description;
-		label.append(input, ` ${option.title}`);
+		label.append(valueBox(option), ` ${option.title}`);
 
 		return label;
 	}));
+
+	// the dialog is rebuilt while it's open (a change in one place shows in the other), so where the person was is kept
+	const list = $('optionsList');
+	const scrolled = list.scrollTop;
+
+	list.replaceChildren(...switches.map(option => {
+		const row = document.createElement('div');
+		const name = document.createElement('label');
+		const help = document.createElement('p');
+		const pin = document.createElement('label');
+		const pinBox = document.createElement('input');
+
+		row.className = 'option';
+		name.className = 'optionName';
+		name.append(valueBox(option), ` ${option.title}`);
+		help.textContent = option.description || 'The scanner gives no description of this option.';
+		pin.className = 'pin';
+		pinBox.type = 'checkbox';
+		pinBox.checked = optionState.pinned.has(option.name);
+		pinBox.addEventListener('change', () => {
+			if (pinBox.checked) {
+				optionState.pinned.add(option.name);
+			} else {
+				optionState.pinned.delete(option.name);
+			}
+
+			saveOptionState();
+			drawSwitches();
+		});
+		pin.append(pinBox, ' Show in main panel');
+		row.append(name, help, pin);
+
+		return row;
+	}));
+
+	list.scrollTop = scrolled;
 }
 
-const changedSwitches = () => [...document.querySelectorAll('#switches input')]
-	.filter(input => String(input.checked) !== input.dataset.initial)
-	.map(input => `${input.dataset.name}=${input.checked}`);
+// "name=value" for each option whose chosen value differs from the scanner's own
+const changedSwitches = () => (caps?.switches ?? [])
+	.filter(option => optionValue(option) !== option.value)
+	.map(option => `${option.name}=${optionValue(option)}`);
 
 // a feeder feeds sheets by itself, so scanning everything in it is the sensible default; a preview is of a bed you can lay something on
 function updateForSource() {
@@ -240,7 +322,7 @@ function render() {
 		$(id).disabled = wasBusy;
 	}
 
-	for (const input of document.querySelectorAll('#switches input')) {
+	for (const input of document.querySelectorAll('#switches input, #optionsDialog input')) {
 		input.disabled = wasBusy;
 	}
 
@@ -696,6 +778,12 @@ function wire() {
 		try { await api('api/document', { method: 'DELETE' }); } catch (error) { say(error.message, true); }
 	});
 
+	$('optionsButton').addEventListener('click', () => { $('optionsDialog').showModal(); });
+	$('resetOptions').addEventListener('click', () => {
+		optionState.values = {};
+		saveOptionState();
+		drawSwitches();
+	});
 	$('suggest').addEventListener('click', () => suggest(false));
 	$('autoName').addEventListener('change', () => remember('autoName', String($('autoName').checked)));
 	for (const id of ['title', 'docDate']) {

@@ -30,6 +30,7 @@
 		<label><input type="checkbox" id="deskew"> Straighten crooked pages</label>
 		<label><input type="checkbox" id="trim"> Trim the background</label>
 		<fieldset id="switches" hidden><legend>Scanner options</legend></fieldset>
+		<button id="optionsButton" type="button" hidden>All scanner options...</button>
 		<div class="buttons">
 			<button id="preview" type="button">Preview</button>
 			<button id="scan" type="button" class="primary">Scan</button>
@@ -77,6 +78,18 @@
 		</div>
 	</section>
 </main>
+
+<dialog id="optionsDialog">
+	<form method="dialog">
+		<h2>Scanner options</h2>
+		<p class="hint">What this scanner offers for the source chosen. Tick "Show in main panel" to keep an option at hand in the settings. What you choose here is remembered in this browser, for this model of scanner.</p>
+		<div id="optionsList"></div>
+		<div class="buttons">
+			<button id="resetOptions" type="button">Reset to the scanner's own settings</button>
+			<button>Close</button>
+		</div>
+	</form>
+</dialog>
 
 <dialog id="logDialog">
 	<form method="dialog">

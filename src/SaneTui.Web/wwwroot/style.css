@@ -142,3 +142,11 @@ dialog { width: min(720px, 92vw); background: var(--panel); color: var(--text); 
 #naming input[type=text] { width: min(360px, 80vw); }
 #naming input[type=text], #naming input[type=date] { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
 #suggestControls { display: flex; gap: 12px; align-items: center; }
+
+#optionsButton { margin: 0 0 8px; }
+#optionsList { max-height: 60vh; overflow: auto; margin: 8px 0; }
+.option { padding: 8px 0; border-top: 1px solid var(--line); }
+.option:first-child { border-top: 0; }
+.option .optionName { font-weight: 600; color: var(--text); font-size: 15px; margin: 0; }
+.option p { margin: 4px 0 4px 26px; color: var(--muted); font-size: 13px; }
+.option .pin { margin: 0 0 0 26px; font-size: 13px; color: var(--muted); }
