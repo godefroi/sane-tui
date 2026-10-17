@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sane-tui scanner</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+	<h1>Scanner</h1>
+	<span id="connection" hidden>Connection lost, retrying...</span>
+</header>
+
+<main>
+	<section id="settings" aria-label="Scan settings">
+		<label class="wide">Scanner
+			<span class="row">
+				<select id="device"></select>
+				<button id="refresh" type="button" title="Look for scanners again">Refresh</button>
+			</span>
+		</label>
+		<label id="sourceLabel">Source <select id="source"></select></label>
+		<label id="modeLabel">Mode <select id="mode"></select></label>
+		<label>Resolution <select id="resolution"></select></label>
+		<label>Page size <select id="paper"></select></label>
+		<label id="allPagesLabel"><input type="checkbox" id="allPages"> All pages in the feeder</label>
+		<label><input type="checkbox" id="rotate"> Rotate 180&deg;</label>
+		<div class="buttons">
+			<button id="preview" type="button">Preview</button>
+			<button id="scan" type="button" class="primary">Scan</button>
+			<button id="cancel" type="button" hidden>Cancel</button>
+			<button id="showLog" type="button">Log</button>
+		</div>
+		<progress id="progress" max="1" hidden></progress>
+		<p id="status" role="status"></p>
+	</section>
+
+	<section id="viewer" aria-label="Preview and pages">
+		<div id="stage" tabindex="0">
+			<div id="frame">
+				<img id="picture" alt="" draggable="false">
+				<div id="selection" hidden></div>
+			</div>
+			<p id="placeholder">A preview will appear here.</p>
+		</div>
+		<p id="caption"></p>
+		<div class="buttons">
+			<span id="zoomControls">
+				Zoom
+				<button id="zoomOut" type="button" aria-label="Zoom out">&minus;</button>
+				<button id="zoomIn" type="button" aria-label="Zoom in">+</button>
+			</span>
+			<button id="deletePage" type="button" hidden>Delete this page</button>
+		</div>
+		<p class="hint" id="hint">Drag over the preview to choose the area to scan; click to clear. Then the arrow keys slide it by 1&nbsp;mm and Shift with an arrow resizes it.</p>
+	</section>
+
+	<section id="document" aria-label="Document">
+		<h2>Document <span id="pageCount"></span></h2>
+		<div id="strip"></div>
+		<div class="buttons">
+			<a id="pdf" class="button" href="api/document.pdf" hidden>Download PDF</a>
+			<button id="discard" type="button" hidden>Discard document</button>
+		</div>
+	</section>
+</main>
+
+<dialog id="logDialog">
+	<form method="dialog">
+		<h2>Log</h2>
+		<ol id="log"></ol>
+		<button>Close</button>
+	</form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

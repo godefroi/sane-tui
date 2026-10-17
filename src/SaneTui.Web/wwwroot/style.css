@@ -1,0 +1,136 @@
+:root {
+	--bg: #f6f7f9;
+	--panel: #ffffff;
+	--text: #1c2330;
+	--muted: #5d6879;
+	--line: #d3d9e2;
+	--accent: #2a5bd7;
+	--accent-text: #ffffff;
+	--error: #b3261e;
+	--canvas: #20242c;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #14171c;
+		--panel: #1d2128;
+		--text: #e6e9ef;
+		--muted: #9aa4b5;
+		--line: #333a46;
+		--accent: #7aa2f7;
+		--accent-text: #0d1117;
+		--error: #ff8a80;
+		--canvas: #0d0f13;
+	}
+}
+
+* { box-sizing: border-box; }
+
+/* the hidden attribute alone loses to any rule that sets display, such as the flex on labels */
+[hidden] { display: none !important; }
+
+body {
+	margin: 0;
+	padding: 0 16px 32px;
+	background: var(--bg);
+	color: var(--text);
+	font: 15px/1.4 system-ui, sans-serif;
+}
+
+header { display: flex; align-items: baseline; gap: 16px; max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 16px 0 8px; }
+h2 { font-size: 16px; margin: 0 0 8px; }
+#connection { color: var(--error); font-size: 13px; }
+
+main {
+	display: grid;
+	grid-template-columns: minmax(260px, 340px) 1fr;
+	gap: 16px;
+	max-width: 1200px;
+	margin: 0 auto;
+	align-items: start;
+}
+
+section {
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 12px;
+}
+
+#document { grid-column: 1 / -1; }
+
+label { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+label:has(input[type=checkbox]) { flex-direction: row; align-items: center; gap: 8px; font-size: 15px; color: var(--text); }
+.row { display: flex; gap: 8px; }
+.row select { flex: 1; min-width: 0; }
+
+select, button, .button {
+	font: inherit;
+	color: var(--text);
+	background: var(--panel);
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	padding: 6px 10px;
+	text-decoration: none;
+	cursor: pointer;
+}
+select { width: 100%; }
+button:disabled, select:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+progress { width: 100%; margin-top: 8px; }
+#status { min-height: 1.4em; margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+#status.error { color: var(--error); }
+
+#stage {
+	position: relative;
+	background: var(--canvas);
+	border-radius: 6px;
+	height: 70vh;
+	min-height: 320px;
+	overflow: auto;
+	container-type: size;
+	display: flex; /* with margin: auto on the children, which centers them without clipping the top and left when zoomed past the stage */
+	outline-offset: 2px;
+}
+#stage:focus-visible { outline: 2px solid var(--accent); }
+#placeholder { color: #8a93a3; margin: auto; }
+
+#frame { position: relative; display: none; margin: auto; line-height: 0; user-select: none; touch-action: none; }
+#frame.shown { display: block; }
+#frame.rotated { transform: rotate(180deg); }
+#picture { display: block; max-width: none; width: var(--zoom-width, auto); height: auto; cursor: crosshair; }
+#frame.fit #picture { max-width: 100cqw; max-height: 100cqh; width: auto; }
+
+#selection {
+	position: absolute;
+	border: 2px solid var(--accent);
+	box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+	pointer-events: none;
+}
+
+#caption { margin: 8px 0 0; color: var(--muted); font-size: 13px; min-height: 1.4em; }
+.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+
+#strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+.thumb {
+	flex: none;
+	width: 96px;
+	padding: 4px;
+	text-align: center;
+	font-size: 12px;
+	background: var(--bg);
+}
+.thumb img { display: block; width: 100%; height: 120px; object-fit: contain; background: var(--canvas); }
+.thumb[aria-pressed=true] { border-color: var(--accent); outline: 2px solid var(--accent); }
+
+dialog { width: min(720px, 92vw); background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; }
+#log { max-height: 50vh; overflow: auto; padding-left: 24px; font: 12px/1.5 ui-monospace, monospace; }
+#log li.error { color: var(--error); }
+
+@media (max-width: 760px) {
+	main { grid-template-columns: 1fr; }
+	#stage { height: 55vh; }
+}

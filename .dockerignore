@@ -1,4 +1,5 @@
 **/bin/
 **/obj/
 .git/
-.claude/
+TestResults/
+scans/

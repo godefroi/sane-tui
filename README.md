@@ -11,7 +11,9 @@ Status: early. The library can enumerate devices, open them, read and set option
 | `src/SaneTui.Sane` | The SANE library (`SaneLibrary`, `SaneDevice`, `SaneOption`). P/Invoke to `libsane.so.1`, no other dependencies. |
 | `src/SaneTui.Core` | What the front ends share on top of the library: scan requests and option setup, the preview scan, JPEG writing (Magick.NET), page sizes, resolution presets, output-file naming. |
 | `src/SaneTui` | The `sane-tui` executable: a Terminal.Gui interface (the default command), and the `diag`, `scan` and `dump` commands. |
+| `src/SaneTui.Web` | The web service and its single page: the same scanning in a browser, for a scanner on a server. |
 | `tests/SaneTui.Sane.Tests` | TUnit tests (Microsoft.Testing.Platform) against SANE's virtual `test` backend. |
+| `tests/SaneTui.Tests`, `tests/SaneTui.Web.Tests` | Tests for the front ends; the web ones start the service in-process. |
 
 Targets .NET 10. Linux only, since SANE is.
 
@@ -34,6 +36,28 @@ dotnet run --project src/SaneTui -- dump         # print every option of every d
 - `dump` prints every option of a device, for comparing what different scanners expose (`dump test` is SANE's virtual test device).
 
 Scanners disagree about option names and values, so look at `dump` output for yours. Only JPEG output exists so far.
+
+## Web UI
+
+`src/SaneTui.Web` serves one page that does what the terminal UI does, from a browser: choose a scanner, source, mode, resolution and page size, preview a flatbed, drag out the area to scan (arrow keys then slide it by 1 mm, Shift+arrows resize it, and there's a zoom), rotate 180 degrees, scan a flatbed or a whole feeder, and watch the pages arrive. Pages are added to one document, which can be downloaded as a PDF (the JPEG pages go into it unchanged) or discarded.
+
+The service owns the scanner: one operation at a time (a second request is refused while one runs), scans keep going if the browser is closed, and the pages are kept on disk, so a restart or a reload picks up where it was.
+
+It's protected with basic authentication, and **refuses to start without a password**. Passwords cross the network unencrypted over plain http, so put it behind TLS (a reverse proxy) unless the network is yours alone.
+
+| Setting (environment variable) | Meaning |
+|---|---|
+| `Web__Password` | Required. |
+| `Web__User` | The user name. Default `scan`. |
+| `Web__DataFolder` | Where documents are kept. Default `data`; `/data` in the container. |
+| `Web__AllowAnonymous` | `true` turns authentication off, for local development only. |
+
+```sh
+podman build -t sane-tui-web -f src/SaneTui.Web/Dockerfile .
+podman run --rm --device /dev/bus/usb -p 8080:8080 -e Web__Password=change-me -v sane-tui-data:/data sane-tui-web
+```
+
+Without a container: `Web__Password=change-me dotnet run --project src/SaneTui.Web`.
 
 ## Tests
 
