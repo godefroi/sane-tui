@@ -2,6 +2,7 @@ using System.Text.Json;
 using ImageMagick;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http.Json;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using SaneTui;
 using SaneTui.Sane;
@@ -12,6 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<WebOptions>(builder.Configuration.GetSection("Web"));
 builder.Services.AddSingleton<DocumentStore>();
 builder.Services.AddSingleton<ScannerService>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddHostedService<RetentionService>();
 builder.Services.Configure<NamingOptions>(builder.Configuration.GetSection("Naming"));
 builder.Services.AddSingleton<Tesseract>();
 builder.Services.AddSingleton<NameSuggester>();
@@ -149,7 +152,7 @@ api.MapDelete("/pages/{id}", (DocumentStore documents, ScannerService scanner, s
 
 // throws the document away, which is final; refused while a scan is still adding to it
 api.MapDelete("/document", (DocumentStore documents, ScannerService scanner) => {
-	if (scanner.GetSnapshot().Status != "idle") {
+	if (scanner.IsBusy) {
 		throw new BusyException();
 	}
 
@@ -174,7 +177,7 @@ api.MapGet("/document.pdf", async (DocumentStore documents, string? title, strin
 });
 
 // what the page can offer, which depends on how the service was set up
-api.MapGet("/config", (NameSuggester names) => new { naming = names.Available });
+api.MapGet("/config", (NameSuggester names, IOptions<WebOptions> web) => new { naming = names.Available, retentionDays = web.Value.RetentionDays });
 
 // Reads the first pages' text and asks the language model for a title and date. Slow (seconds), so it's a plain request that
 // the page waits for; it doesn't use the scanner and doesn't block one.

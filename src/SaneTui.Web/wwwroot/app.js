@@ -416,6 +416,8 @@ function draw() {
 	}
 
 	$('pageCount').textContent = pages().length > 0 ? `(${pages().length} page${pages().length === 1 ? '' : 's'})` : '';
+	$('retentionNote').hidden = pages().length === 0 || retentionDays <= 0;
+	$('retentionNote').textContent = `Scanned pages are removed ${retentionDays} days after the document was last changed (a page added or deleted counts as a change).`;
 	$('pdf').hidden = pages().length === 0;
 	$('discard').hidden = pages().length === 0;
 
@@ -476,6 +478,7 @@ let suggesting = false;
 let touched = false;
 let previousStatus = 'idle';
 let namedDocument = null;
+let retentionDays = 0;
 
 function drawNaming() {
 	const count = pages().length;
@@ -555,7 +558,10 @@ function updateNaming() {
 
 async function loadConfig() {
 	try {
-		namingAvailable = (await api('api/config')).naming;
+		const config = await api('api/config');
+
+		namingAvailable = config.naming;
+		retentionDays = config.retentionDays;
 	} catch {
 		namingAvailable = false;
 	}

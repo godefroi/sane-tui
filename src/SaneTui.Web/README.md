@@ -38,12 +38,19 @@ Set as environment variables (or in any other .NET configuration source; the dou
 | `Web__Password` | Required. The service **refuses to start** without one. |
 | `Web__User` | The user name. Default `scan`. |
 | `Web__DataFolder` | Where the document being scanned is kept. Default `data`; `/data` in the container, which is a volume. |
+| `Web__RetentionDays` | How many days a document is kept after it was last changed before it is removed. Default 30; `0` keeps documents until they are discarded by hand. See [Scanned pages](#scanned-pages). |
 | `Web__AllowAnonymous` | `true` turns authentication off. For local development only. |
 | `Naming__Endpoint` | The OpenAI-compatible endpoint of an Azure OpenAI or Microsoft Foundry resource. The resource address is enough; `/openai/v1/` is added if it is not there. |
 | `Naming__ApiKey` | The key for that endpoint. |
 | `Naming__Model` | The model to ask. On Azure and Foundry this is the name given to the deployment. |
 | `Naming__Languages` | Tesseract language codes for the text on the pages, joined with `+`. Default `eng`. Install the matching `tesseract-ocr-<language>` package in the image for others. |
 | `Naming__Pages` | How many pages, from the first, to read for text. Default 5. |
+
+## Scanned pages
+
+The document being scanned is kept in the data folder (`/data` in the container) until it is **discarded** from the page, which removes its pages for good, or deleted page by page. Nothing is removed when the PDF is downloaded.
+
+So that forgotten documents don't stay there for ever, a document that has not changed for `Web__RetentionDays` days (30 by default) is removed. A page being added or deleted counts as a change, so a document that is still being worked on is not touched. The check runs when the service starts, and then once a day. Besides the current document it clears out any other document folder left in the data folder (after a crash, say), by the same age. Only folders named the way documents are named are ever removed, whatever else is kept in the volume. A sweep is skipped while the scanner is in use, and the service logs what a sweep removed. The page tells you the period.
 
 ## Security
 

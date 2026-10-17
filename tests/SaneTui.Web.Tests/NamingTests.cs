@@ -195,8 +195,8 @@ public class NamingTests
 		using var offClient = off.SignedIn();
 		using var onClient = on.SignedIn();
 
-		await Assert.That(await offClient.GetStringAsync("/api/config")).IsEqualTo("""{"naming":false}""");
-		await Assert.That(await onClient.GetStringAsync("/api/config")).IsEqualTo("""{"naming":true}""");
+		await Assert.That(await offClient.GetStringAsync("/api/config")).IsEqualTo("""{"naming":false,"retentionDays":30}""");
+		await Assert.That(await onClient.GetStringAsync("/api/config")).IsEqualTo("""{"naming":true,"retentionDays":30}""");
 	}
 
 	[Test]

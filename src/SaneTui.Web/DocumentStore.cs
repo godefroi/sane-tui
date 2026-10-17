@@ -108,6 +108,53 @@ internal sealed partial class DocumentStore
 		}
 	}
 
+	/// <summary>The outcome of a sweep: what was removed, and the folders that couldn't be.</summary>
+	internal sealed record SweepResult(int Removed, IReadOnlyList<string> Failed);
+
+	/// <summary>
+	/// Removes the documents that haven't changed for longer than <paramref name="age"/>: the current one, and any other folder
+	/// left in the data folder (by a crash, or a manifest that couldn't be read), which nothing else would ever remove. A document's
+	/// age is that of the newest file in it, so a page added or deleted starts it afresh. Only folders named the way documents are
+	/// named are touched, whatever else is in the volume.
+	/// </summary>
+	public SweepResult RemoveOlderThan(TimeSpan age, DateTime nowUtc, CancellationToken cancellationToken)
+	{
+		var removed = 0;
+		var failed = new List<string>();
+
+		lock (_lock) {
+			foreach (var folder in Directory.EnumerateDirectories(_folder)) {
+				cancellationToken.ThrowIfCancellationRequested();
+
+				var id = Path.GetFileName(folder);
+
+				if (!DocumentFolder().IsMatch(id) || nowUtc - NewestWrite(folder) <= age) {
+					continue;
+				}
+
+				try {
+					Directory.Delete(folder, recursive: true);
+
+					if (_current?.Id == id) {
+						_current = null;
+					}
+
+					removed++;
+				} catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) {
+					failed.Add($"{id}: {ex.Message}"); // the others are still swept
+				}
+			}
+		}
+
+		return new SweepResult(removed, failed);
+	}
+
+	private static DateTime NewestWrite(string folder) =>
+		Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Select(File.GetLastWriteTimeUtc).Append(Directory.GetLastWriteTimeUtc(folder)).Max();
+
+	[GeneratedRegex(@"^\d{8}-\d{6}-[0-9a-f]{4}$")]
+	private static partial Regex DocumentFolder();
+
 	private string FileFor(string documentId, string pageId) => Path.Combine(_folder, documentId, pageId + ".jpg");
 
 	private Manifest Start()

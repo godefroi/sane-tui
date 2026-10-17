@@ -8,6 +8,9 @@ internal sealed class WebOptions
 
 	public string User { get; set; } = "scan";
 
+	/// <summary>How many days a document is kept after it was last changed (a page added or deleted) before it is removed. 0 keeps documents until they are discarded by hand.</summary>
+	public int RetentionDays { get; set; } = 30;
+
 	/// <summary>The password for basic authentication. Required: the service refuses to start without one unless <see cref="AllowAnonymous"/> is set.</summary>
 	public string? Password { get; set; }
 

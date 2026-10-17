@@ -32,6 +32,16 @@ internal sealed class ScannerService(DocumentStore documents) : IAsyncDisposable
 	private PreviewInfo? _previewInfo;
 	private byte[]? _previewImage;
 
+	/// <summary>Whether an operation is using the scanner.</summary>
+	public bool IsBusy
+	{
+		get {
+			lock (_lock) {
+				return _operation is not null;
+			}
+		}
+	}
+
 	public Snapshot GetSnapshot()
 	{
 		lock (_lock) {
