@@ -121,6 +121,10 @@ async function loadCapabilities(source = null) {
 
 	remember('device', name);
 
+	// this scanner's remembered settings, which can name the source to start with
+	loadScannerState();
+	source ??= scannerState.settings.source ?? null;
+
 	try {
 		caps = await api(`api/capabilities?device=${encodeURIComponent(name)}${source ? `&source=${encodeURIComponent(source)}` : ""}`);
 	} catch (error) {
@@ -138,11 +142,61 @@ async function loadCapabilities(source = null) {
 	}
 
 	fill($('resolution'), caps.resolutions, caps.defaultResolution, v => `${v} dpi`);
-	loadOptionState();
-	drawSwitches();
 	setPaperChoices('full');
 	updateForSource();
+	applySettings();
+	drawSwitches();
 	say('Ready.');
+}
+
+// What was last chosen for a scanner is kept in this browser, for each model of scanner: the source, mode, resolution, page size,
+// the checkboxes. They differ from one scanner to the next (a flatbed and a feeder want different resolutions; one scanner has its
+// pages laid upside-down), so one scanner's choices are not another's. Only what the scanner still offers is put back. The area
+// dragged out on the preview isn't kept: it belongs to one preview.
+function applySettings() {
+	const saved = scannerState.settings;
+
+	if (saved.mode !== undefined && caps.modes?.choices.includes(saved.mode)) {
+		$('mode').value = saved.mode;
+	}
+
+	if (saved.resolution !== undefined && caps.resolutions.includes(saved.resolution)) {
+		$('resolution').value = String(saved.resolution);
+	}
+
+	if (saved.paper !== undefined && ['full', ...caps.papers].includes(saved.paper)) {
+		setPaperChoices(saved.paper);
+	}
+
+	$('rotate').checked = saved.rotate ?? false;
+	$('deskew').checked = saved.deskew ?? false;
+	$('trim').checked = saved.trim ?? false;
+
+	if (saved.allPages !== undefined && !$('allPagesLabel').hidden) {
+		$('allPages').checked = saved.allPages;
+	}
+
+	draw(); // turning the picture over is one of them
+}
+
+function saveSettings() {
+	if (!caps) {
+		return;
+	}
+
+	scannerState.settings = {
+		source: chosen('source') ?? undefined,
+		mode: chosen('mode') ?? undefined,
+		resolution: Number($('resolution').value),
+		paper: $('paper').value === 'selection' ? 'full' : $('paper').value,
+		// a flatbed has no such choice, and what was chosen for the feeder is kept meanwhile
+		allPages: $('allPagesLabel').hidden ? scannerState.settings.allPages : $('allPages').checked,
+		rotate: $('rotate').checked,
+		deskew: $('deskew').checked,
+		trim: $('trim').checked,
+	};
+
+	saveScannerState();
 }
 
 // ---- the scanner's own on/off options
@@ -150,7 +204,7 @@ async function loadCapabilities(source = null) {
 // They start at the value the scanner has, and only the ones the person has changed are sent with a scan. The dialog lists all
 // of them with their help text; the ones ticked "Show in main panel" are also in the settings panel. What's pinned and what
 // has been chosen is kept in this browser, for each model of scanner (a scanner's address changes when it's replugged).
-let optionState = { pinned: new Set(), values: {} };
+let scannerState = { pinned: new Set(), values: {}, settings: {} };
 
 const modelKey = () => {
 	const device = devices?.find(d => d.name === $('device').value);
@@ -158,23 +212,35 @@ const modelKey = () => {
 	return device ? `${device.vendor} ${device.model}` : $('device').value;
 };
 
-function loadOptionState() {
-	optionState = { pinned: new Set(), values: {} };
+// stored under "options:" because that is where the pinned options were first kept; the other settings join them
+const storageKey = () => `options:${modelKey()}`;
+
+const typed = (object, types) => Object.fromEntries(Object.entries(object).filter(([key, value]) => typeof value === types[key]));
+
+function loadScannerState() {
+	scannerState = { pinned: new Set(), values: {}, settings: {} };
 
 	try {
-		const saved = JSON.parse(recall(`options:${modelKey()}`) ?? 'null');
+		const saved = JSON.parse(recall(storageKey()) ?? 'null');
 
 		if (saved && Array.isArray(saved.pinned) && saved.values && typeof saved.values === 'object') {
-			optionState = { pinned: new Set(saved.pinned.filter(n => typeof n === 'string')), values: Object.fromEntries(Object.entries(saved.values).filter(([, v]) => typeof v === 'boolean')) };
+			scannerState = {
+				pinned: new Set(saved.pinned.filter(n => typeof n === 'string')),
+				values: Object.fromEntries(Object.entries(saved.values).filter(([, v]) => typeof v === 'boolean')),
+				// a record from before these were kept has none; anything of the wrong kind is dropped
+				settings: saved.settings && typeof saved.settings === 'object'
+					? typed(saved.settings, { source: 'string', mode: 'string', resolution: 'number', paper: 'string', allPages: 'boolean', rotate: 'boolean', deskew: 'boolean', trim: 'boolean' })
+					: {},
+			};
 		}
 	} catch { /* what's stored isn't ours to trust: start clean */ }
 }
 
-function saveOptionState() {
-	remember(`options:${modelKey()}`, JSON.stringify({ pinned: [...optionState.pinned], values: optionState.values }));
+function saveScannerState() {
+	remember(storageKey(), JSON.stringify({ pinned: [...scannerState.pinned], values: scannerState.values, settings: scannerState.settings }));
 }
 
-const optionValue = option => optionState.values[option.name] ?? option.value;
+const optionValue = option => scannerState.values[option.name] ?? option.value;
 
 // a checkbox for an option's value, kept in step with the same option shown elsewhere
 function valueBox(option) {
@@ -184,8 +250,8 @@ function valueBox(option) {
 	input.checked = optionValue(option);
 	input.disabled = busy();
 	input.addEventListener('change', () => {
-		optionState.values[option.name] = input.checked;
-		saveOptionState();
+		scannerState.values[option.name] = input.checked;
+		saveScannerState();
 		drawSwitches();
 	});
 
@@ -194,7 +260,7 @@ function valueBox(option) {
 
 function drawSwitches() {
 	const switches = caps?.switches ?? [];
-	const pinned = switches.filter(o => optionState.pinned.has(o.name));
+	const pinned = switches.filter(o => scannerState.pinned.has(o.name));
 	const box = $('switches');
 
 	$('optionsButton').hidden = switches.length === 0;
@@ -226,15 +292,15 @@ function drawSwitches() {
 		help.textContent = option.description || 'The scanner gives no description of this option.';
 		pin.className = 'pin';
 		pinBox.type = 'checkbox';
-		pinBox.checked = optionState.pinned.has(option.name);
+		pinBox.checked = scannerState.pinned.has(option.name);
 		pinBox.addEventListener('change', () => {
 			if (pinBox.checked) {
-				optionState.pinned.add(option.name);
+				scannerState.pinned.add(option.name);
 			} else {
-				optionState.pinned.delete(option.name);
+				scannerState.pinned.delete(option.name);
 			}
 
-			saveOptionState();
+			saveScannerState();
 			drawSwitches();
 		});
 		pin.append(pinBox, ' Show in main panel');
@@ -754,10 +820,14 @@ function wire() {
 	$('source').addEventListener('change', () => {
 		selection = null;
 		draw();
+		saveSettings(); // before the choices that follow from the old source change
 		updateForSource(); // right away: the feeder choices don't depend on what the scanner says next
 		loadCapabilities($('source').value);
 	});
-	$('rotate').addEventListener('change', draw);
+	$('rotate').addEventListener('change', () => {
+		draw();
+		saveSettings();
+	});
 	$('paper').addEventListener('change', () => {
 		// choosing anything but the selection gives the selection up, so the box never claims an area the scan won't use
 		if (selection && $('paper').value !== 'selection') {
@@ -766,6 +836,11 @@ function wire() {
 			draw();
 		}
 	});
+
+	// what is chosen is remembered for this scanner (the paper size, above, may also have given up a selection)
+	for (const id of ['mode', 'resolution', 'paper', 'allPages', 'deskew', 'trim']) {
+		$(id).addEventListener('change', saveSettings);
+	}
 
 	$('preview').addEventListener('click', () => command('api/preview', { device: $('device').value, source: chosen('source') }));
 	$('scan').addEventListener('click', () => command('api/scan', scanRequest()));
@@ -786,8 +861,8 @@ function wire() {
 
 	$('optionsButton').addEventListener('click', () => { $('optionsDialog').showModal(); });
 	$('resetOptions').addEventListener('click', () => {
-		optionState.values = {};
-		saveOptionState();
+		scannerState.values = {};
+		saveScannerState();
 		drawSwitches();
 	});
 	$('suggest').addEventListener('click', () => suggest(false));

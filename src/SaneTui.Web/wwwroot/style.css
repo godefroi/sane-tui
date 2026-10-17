@@ -150,3 +150,9 @@ dialog { width: min(720px, 92vw); background: var(--panel); color: var(--text); 
 .option .optionName { font-weight: 600; color: var(--text); font-size: 15px; margin: 0; }
 .option p { margin: 4px 0 4px 26px; color: var(--muted); font-size: 13px; }
 .option .pin { margin: 0 0 0 26px; font-size: 13px; color: var(--muted); }
+
+/* A dialog is modal, so the page behind it doesn't scroll: the wheel moves what's in the dialog if it overflows, and nothing otherwise. */
+html { scrollbar-gutter: stable; }
+body:has(dialog[open]) { overflow: hidden; }
+dialog { max-height: calc(100vh - 32px); overflow: auto; overscroll-behavior: contain; }
+#optionsList, #log { overscroll-behavior: contain; }
