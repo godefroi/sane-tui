@@ -8,4 +8,28 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
+  <!-- The package. Its metadata is in SaneTui.Sane.nuspec; `dotnet pack` fills in the version, which comes from the command line:
+       dotnet pack src/SaneTui.Sane -c Release -p:PackageVersion=1.2.3 -->
+  <PropertyGroup Label="Package">
+    <IsPackable>true</IsPackable>
+    <NuspecFile>SaneTui.Sane.nuspec</NuspecFile>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">0.0.0-local</PackageVersion>
+    <NuspecProperties>version=$(PackageVersion);configuration=$(Configuration)</NuspecProperties>
+
+    <!-- Debug symbols go inside the DLL, and Source Link (built into the SDK) points them at the GitHub source, so a debugger can
+         step into the library with no symbol package to publish. -->
+    <DebugType>embedded</DebugType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <!-- The commit being packed, for the repository element: known only once Source Link has looked at the repository, which is after the
+       properties above are read. -->
+  <Target Name="NuspecCommit" BeforeTargets="GenerateNuspec" DependsOnTargets="InitializeSourceControlInformation">
+    <PropertyGroup>
+      <NuspecProperties>$(NuspecProperties);commit=$(SourceRevisionId)</NuspecProperties>
+    </PropertyGroup>
+  </Target>
+
 </Project>

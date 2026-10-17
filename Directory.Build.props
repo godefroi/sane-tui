@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Nothing is a package unless it says so (the SANE library does), so packing the solution makes one package, not nine. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
 </Project>

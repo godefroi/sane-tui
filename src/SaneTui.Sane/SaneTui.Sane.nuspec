@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>SaneTui.Sane</id>
+    <version>$version$</version>
+    <title>SANE for .NET</title>
+    <authors>Mark Parker</authors>
+    <description>Scan from .NET on Linux through SANE, the scanner framework most Linux scanner drivers use. List scanners, read and set their options, scan a page or a whole document feeder, and get the pixels back. Calls libsane directly with no dependencies, and puts SANE's single-threaded, global-state design behind an async API. Needs the native SANE library (libsane1 or sane-backends) and your scanner's driver.</description>
+    <license type="expression">Apache-2.0</license>
+    <readme>README.md</readme>
+    <projectUrl>https://github.com/godefroi/sane-tui</projectUrl>
+    <repository type="git" url="https://github.com/godefroi/sane-tui" commit="$commit$" />
+    <copyright>Copyright (c) 2026 Mark Parker</copyright>
+    <tags>sane scanner scanning scan flatbed document-feeder adf linux pinvoke</tags>
+    <releaseNotes>https://github.com/godefroi/sane-tui/releases/tag/v$version$</releaseNotes>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <dependencies>
+      <group targetFramework="net10.0" />
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="bin\$configuration$\net10.0\SaneTui.Sane.dll" target="lib\net10.0\" />
+    <file src="bin\$configuration$\net10.0\SaneTui.Sane.xml" target="lib\net10.0\" />
+    <file src="README.md" target="" />
+  </files>
+</package>
