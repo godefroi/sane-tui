@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/SaneTui.Sane/SaneTui.Sane.csproj" />
+    <Project Path="src/SaneTui.Core/SaneTui.Core.csproj" />
     <Project Path="src/SaneTui/SaneTui.csproj" />
   </Folder>
   <Folder Name="/tests/">

@@ -20,8 +20,8 @@ internal static class PreviewScan
 		await using var device = await sane.OpenAsync(deviceName);
 
 		var request = BuildRequest(deviceName, source, device.Options);
-		var area = await ScanCommand.ApplyOptionsAsync(device, request, null, null);
-		var dpi = ScanCommand.Resolution(device);
+		var area = await ScanSetup.ApplyOptionsAsync(device, request, null, null);
+		var dpi = ScanSetup.Resolution(device);
 		var image = await device.ScanAsync(progress, cancellationToken);
 
 		return new PreviewResult(image, area, dpi);

@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SaneTui.Core\SaneTui.Core.csproj" />
     <ProjectReference Include="..\SaneTui.Sane\SaneTui.Sane.csproj" />
   </ItemGroup>
 

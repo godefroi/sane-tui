@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libsane1 && rm 
 WORKDIR /src
 COPY sane-tui.slnx ./
 COPY src/SaneTui.Sane/SaneTui.Sane.csproj src/SaneTui.Sane/
+COPY src/SaneTui.Core/SaneTui.Core.csproj src/SaneTui.Core/
 COPY src/SaneTui/SaneTui.csproj src/SaneTui/
 COPY tests/SaneTui.Sane.Tests/SaneTui.Sane.Tests.csproj tests/SaneTui.Sane.Tests/
 COPY tests/SaneTui.Tests/SaneTui.Tests.csproj tests/SaneTui.Tests/
