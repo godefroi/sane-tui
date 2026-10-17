@@ -1,0 +1,152 @@
+name: Release
+
+# A tag like v1.2.3 publishes: the sane-tui program for download, and the web image to the GitHub container registry.
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - id: check
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          # v1.2.3 or v1.2.3-rc.1: the number goes into the program and the image, so it has to be one
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "The tag '$TAG' isn't of the form v1.2.3 or v1.2.3-rc.1." >&2
+            exit 1
+          fi
+
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$([[ "$TAG" == *-* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  tui:
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        rid: [linux-x64, linux-arm64]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # One file, with the .NET runtime inside: nothing to install but SANE itself (libsane1, which a scanner needs anyway).
+      # The native pieces (Magick.NET) are unpacked next to it the first time it runs.
+      - name: Publish
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          RID: ${{ matrix.rid }}
+        run: |
+          dotnet publish src/SaneTui --configuration Release --runtime "$RID" --self-contained \
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version="$VERSION" --output publish
+
+          name="sane-tui-$VERSION-$RID"
+          mkdir --parents "dist/$name"
+          cp publish/sane-tui LICENSE README.md "dist/$name/"
+          tar --create --gzip --file "dist/$name.tar.gz" --directory dist "$name"
+          rm --recursive "dist/$name"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sane-tui-${{ matrix.rid }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  image:
+    needs: [version, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # The tags come from the git tag: v1.2.3 gives 1.2.3, 1.2, 1 and latest. The action leaves the moving tags off a pre-release
+      # (v1.2.3-rc.1 gives only 1.2.3-rc.1) and the major number off a 0.x release.
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/sane-tui-web
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          labels: |
+            org.opencontainers.image.title=sane-tui-web
+            org.opencontainers.image.description=Scan from a browser: a web page and service for a scanner attached to a server, built on SANE
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: src/SaneTui.Web/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ needs.version.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: true
+
+  release:
+    needs: [version, tui, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: sane-tui-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          (cd dist && sha256sum ./*.tar.gz > SHA256SUMS)
+
+          cat > notes.md <<NOTES
+          ## Install
+
+          **Terminal program** (Linux; needs SANE, e.g. \`libsane1\` on Debian or Ubuntu): download the file for your machine below,
+          unpack it, and run \`./sane-tui\`.
+
+          **Web service:** \`docker pull ghcr.io/${OWNER,,}/sane-tui-web:${VERSION}\`. It needs a password: see the
+          [web UI documentation](https://github.com/${GH_REPO}/blob/${TAG}/src/SaneTui.Web/README.md).
+
+          NOTES
+
+          flags=()
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+
+          gh release create "$TAG" dist/* --title "$TAG" --notes-file notes.md --generate-notes --verify-tag "${flags[@]}"

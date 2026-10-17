@@ -39,32 +39,11 @@ Scanners disagree about option names and values, so look at `dump` output for yo
 
 ## Web UI
 
-`src/SaneTui.Web` serves one page that does what the terminal UI does, from a browser: choose a scanner, source, mode, resolution and page size, preview a flatbed, drag out the area to scan (arrow keys then slide it by 1 mm, Shift+arrows resize it, and there's a zoom), rotate 180 degrees, straighten and trim pages, set the scanner's own on/off options (read from the scanner for the chosen source), scan a flatbed or a whole feeder, and watch the pages arrive. Pages are added to one document, which can be downloaded as a PDF (the JPEG pages go into it unchanged) or discarded.
+`src/SaneTui.Web` serves one page that does what the terminal UI does, from a browser, for a scanner attached to a server: preview a flatbed and drag out the area to scan, scan a flatbed or a whole feeder, watch the pages arrive, and download them as a PDF, optionally with a title and date suggested by a language model. It runs from a container image, protected by a password. See the [web UI documentation](src/SaneTui.Web/README.md) for how to run and configure it.
 
-The service owns the scanner: one operation at a time (a second request is refused while one runs), scans keep going if the browser is closed, and the pages are kept on disk, so a restart or a reload picks up where it was.
+## Releases
 
-It's protected with basic authentication, and **refuses to start without a password**. Passwords cross the network unencrypted over plain http, so put it behind TLS (a reverse proxy) unless the network is yours alone.
-
-| Setting (environment variable) | Meaning |
-|---|---|
-| `Web__Password` | Required. |
-| `Web__User` | The user name. Default `scan`. |
-| `Web__DataFolder` | Where documents are kept. Default `data`; `/data` in the container. |
-| `Web__AllowAnonymous` | `true` turns authentication off, for local development only. |
-| `Naming__Endpoint` | The OpenAI-compatible endpoint of an Azure OpenAI or Microsoft Foundry resource, to suggest a title and date for a document (see below). The resource address is enough; `/openai/v1/` is added if it is not there. |
-| `Naming__ApiKey` | The key for that endpoint. |
-| `Naming__Model` | The model to ask; on Azure and Foundry, the name of the deployment. |
-| `Naming__Languages` | Tesseract language codes for the text on the pages, joined with `+`. Default `eng`. Install the matching `tesseract-ocr-<language>` package in the image. |
-| `Naming__Pages` | How many pages, from the first, to read for text. Default 5. |
-
-```sh
-podman build -t sane-tui-web -f src/SaneTui.Web/Dockerfile .
-podman run --rm --device /dev/bus/usb -p 8080:8080 -e Web__Password=change-me -v sane-tui-data:/data sane-tui-web
-```
-
-Without a container: `Web__Password=change-me dotnet run --project src/SaneTui.Web`.
-
-**Naming.** With the `Naming__` settings, the page can suggest a title and a date for the document: Tesseract reads the text of the first pages, and a language model (through `Microsoft.Extensions.AI`, using the OpenAI library against the `/openai/v1/` endpoint that Azure OpenAI and Foundry both serve) answers with a title and the date the document carries. Only the text goes to the model, not the page pictures. The title and date box names the downloaded PDF (`2024-03-01 Electric bill.pdf`), and can be typed in by hand without any of this being set up. "Suggest a name" asks on demand, and "After each scan" does it when a scan finishes, unless something has been typed.
+A tag like `v1.2.3` publishes a release: the `sane-tui` program for Linux (x64 and arm64, a single file with .NET inside; it only needs SANE installed) to download from the [releases page](../../releases), and the web image as `ghcr.io/godefroi/sane-tui-web`.
 
 ## Tests
 

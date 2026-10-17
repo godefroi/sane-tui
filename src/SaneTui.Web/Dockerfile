@@ -2,7 +2,11 @@
 #   podman build -t sane-tui-web -f src/SaneTui.Web/Dockerfile .
 # Run it with a password and the scanner's USB bus (see the README):
 #   podman run --rm --device /dev/bus/usb -p 8080:8080 -e Web__Password=... -v sane-tui-data:/data sane-tui-web
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+
+# the build runs on the machine doing the building whatever the image is for (the published program is the same for every
+# architecture), so building for arm64 does not mean compiling under emulation
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG VERSION=0.0.0
 WORKDIR /src
 
 COPY sane-tui.slnx Directory.Build.props ./
@@ -12,7 +16,7 @@ COPY src/SaneTui.Web/SaneTui.Web.csproj src/SaneTui.Web/
 RUN dotnet restore src/SaneTui.Web/SaneTui.Web.csproj
 
 COPY src/ src/
-RUN dotnet publish src/SaneTui.Web/SaneTui.Web.csproj --no-restore -c Release -o /out
+RUN dotnet publish src/SaneTui.Web/SaneTui.Web.csproj --no-restore -c Release -p:Version=${VERSION} -o /out
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 

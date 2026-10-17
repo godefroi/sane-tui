@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call: # the release workflow runs the same checks before it publishes anything
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # The tests scan SANE's built-in virtual scanner, read text from a rendered picture with Tesseract, and need a font to draw it.
+      - name: Install what the tests use
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libsane1 tesseract-ocr tesseract-ocr-eng fonts-dejavu-core
+
+      - name: Build
+        run: dotnet build sane-tui.slnx --configuration Release
+
+      - name: Test
+        run: dotnet test --solution sane-tui.slnx --configuration Release --no-build
+
+  # The image is built on every change, and started: a Dockerfile that builds is not the same as one that runs.
+  web-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the image
+        run: docker build --file src/SaneTui.Web/Dockerfile --tag sane-tui-web:ci .
+
+      - name: Start it and check it
+        run: |
+          docker run --detach --name web --publish 8080:8080 --env Web__Password=ci-password sane-tui-web:ci
+
+          for _ in $(seq 1 30); do
+            curl --silent --fail --output /dev/null --user scan:ci-password http://localhost:8080/api/state && break
+            sleep 1
+          done
+
+          # protected without the password, serving the page with it
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8080/)" = 401
+          curl --silent --fail --user scan:ci-password http://localhost:8080/ | grep --quiet '<title>'
+          curl --silent --fail --user scan:ci-password http://localhost:8080/app.js | grep --quiet 'use strict'
+
+          # what the image is supposed to bring with it
+          docker exec web tesseract --version
+          docker logs web
+
+      - name: Show the log if that failed
+        if: failure()
+        run: docker logs web
