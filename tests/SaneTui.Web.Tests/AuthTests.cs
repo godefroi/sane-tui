@@ -2,17 +2,19 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace SaneTui.Web.Tests;
 
-internal sealed class AppFactory(string? password = "secret", bool anonymous = false) : WebApplicationFactory<Program>
+internal sealed class AppFactory(string? password = "secret", bool anonymous = false, Action<IServiceCollection>? configureServices = null) : WebApplicationFactory<Program>
 {
 	public string Data { get; } = Directory.CreateTempSubdirectory("sanetui-web-app-").FullName;
 
 	protected override void ConfigureWebHost(IWebHostBuilder builder)
 	{
 		builder.UseSetting("Web:DataFolder", Data);
+		builder.ConfigureServices(services => configureServices?.Invoke(services));
 		builder.UseSetting("Web:User", "scan");
 		builder.UseSetting("Web:AllowAnonymous", anonymous ? "true" : "false");
 

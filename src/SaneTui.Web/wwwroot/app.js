@@ -243,6 +243,7 @@ function render() {
 	$('preview').textContent = snap.status === 'previewing' ? 'Previewing...' : 'Preview';
 
 	renderLog();
+	updateNaming();
 	draw();
 
 	// the service was busy when we asked (someone else's scan, or ours a moment ago), so ask again now that it's free
@@ -376,6 +377,103 @@ function step(direction) {
 	if (next !== undefined) {
 		show(next);
 	}
+}
+
+// ---- naming the document
+
+// The title and date name the downloaded PDF. They can be typed, or suggested from the text of the first pages. Once the person
+// has typed in either, an automatic suggestion never overwrites it (the Suggest button, being asked for, always does).
+let namingAvailable = false;
+let suggesting = false;
+let touched = false;
+let previousStatus = 'idle';
+let namedDocument = null;
+
+function drawNaming() {
+	const count = pages().length;
+
+	$('suggest').disabled = busy() || suggesting || count === 0;
+	$('suggest').textContent = suggesting ? 'Reading the pages...' : 'Suggest a name';
+
+	const query = new URLSearchParams();
+
+	if ($('title').value.trim()) {
+		query.set('title', $('title').value.trim());
+	}
+
+	if ($('docDate').value) {
+		query.set('date', $('docDate').value);
+	}
+
+	const text = query.toString();
+
+	$('pdf').href = `api/document.pdf${text ? `?${text}` : ''}`;
+}
+
+async function suggest(automatic) {
+	const doc = snap?.document;
+
+	if (!namingAvailable || suggesting || !doc || doc.pages.length === 0) {
+		return;
+	}
+
+	suggesting = true;
+	drawNaming();
+	say('Reading the pages to suggest a name...');
+
+	try {
+		const result = await api('api/document/name', { method: 'POST' });
+
+		// the document was thrown away, or the person started typing, while this was running
+		if (snap?.document?.id !== doc.id || (automatic && touched)) {
+			return;
+		}
+
+		if (!result.title) {
+			say("Couldn't find any text on the pages to go on.", true);
+
+			return;
+		}
+
+		$('title').value = result.title;
+		$('docDate').value = result.date ?? '';
+		say(`Suggested: ${result.date ? `${result.date} ` : ''}${result.title}`);
+	} catch (error) {
+		say(error.message, true);
+	} finally {
+		suggesting = false;
+		drawNaming();
+	}
+}
+
+// called with each snapshot: a new document starts with empty fields, and a scan that has just finished can be named
+function updateNaming() {
+	const doc = snap.document;
+
+	if ((doc?.id ?? null) !== namedDocument) {
+		namedDocument = doc?.id ?? null;
+		touched = false;
+		$('title').value = '';
+		$('docDate').value = '';
+	}
+
+	if (previousStatus === 'scanning' && snap.status === 'idle' && pages().length > 0 && $('autoName').checked && !touched) {
+		suggest(true);
+	}
+
+	previousStatus = snap.status;
+	drawNaming();
+}
+
+async function loadConfig() {
+	try {
+		namingAvailable = (await api('api/config')).naming;
+	} catch {
+		namingAvailable = false;
+	}
+
+	$('suggestControls').hidden = !namingAvailable;
+	$('autoName').checked = recall('autoName') !== 'false';
 }
 
 // ---- zoom
@@ -592,6 +690,15 @@ function wire() {
 		try { await api('api/document', { method: 'DELETE' }); } catch (error) { say(error.message, true); }
 	});
 
+	$('suggest').addEventListener('click', () => suggest(false));
+	$('autoName').addEventListener('change', () => remember('autoName', String($('autoName').checked)));
+	for (const id of ['title', 'docDate']) {
+		$(id).addEventListener('input', () => {
+			touched = true;
+			drawNaming();
+		});
+	}
+
 	$('zoomIn').addEventListener('click', () => zoom(1));
 	$('zoomOut').addEventListener('click', () => zoom(-1));
 	$('frame').addEventListener('pointerdown', startDrag);
@@ -622,3 +729,4 @@ function connect() {
 wire();
 connect();
 loadDevices();
+loadConfig();

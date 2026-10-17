@@ -16,10 +16,11 @@ RUN dotnet publish src/SaneTui.Web/SaneTui.Web.csproj --no-restore -c Release -o
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 
-# libsane1 brings the backends (drivers) with it. The scanner is a USB device, which only root can open unless the host sets up
-# permissions, so the image doesn't switch to the unprivileged user the base image provides.
+# libsane1 brings the backends (drivers) with it. Tesseract reads the text of the first pages, to suggest a name for the document (add
+# tesseract-ocr-<language> for other languages). The scanner is a USB device, which only root can open unless the host sets up
+# permissions, so the image does not switch to the unprivileged user the base image provides.
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends libsane1 \
+	&& apt-get install -y --no-install-recommends libsane1 tesseract-ocr tesseract-ocr-eng \
 	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

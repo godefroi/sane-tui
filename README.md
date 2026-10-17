@@ -51,6 +51,11 @@ It's protected with basic authentication, and **refuses to start without a passw
 | `Web__User` | The user name. Default `scan`. |
 | `Web__DataFolder` | Where documents are kept. Default `data`; `/data` in the container. |
 | `Web__AllowAnonymous` | `true` turns authentication off, for local development only. |
+| `Naming__Endpoint` | The OpenAI-compatible endpoint of an Azure OpenAI or Microsoft Foundry resource, to suggest a title and date for a document (see below). The resource address is enough; `/openai/v1/` is added if it is not there. |
+| `Naming__ApiKey` | The key for that endpoint. |
+| `Naming__Model` | The model to ask; on Azure and Foundry, the name of the deployment. |
+| `Naming__Languages` | Tesseract language codes for the text on the pages, joined with `+`. Default `eng`. Install the matching `tesseract-ocr-<language>` package in the image. |
+| `Naming__Pages` | How many pages, from the first, to read for text. Default 5. |
 
 ```sh
 podman build -t sane-tui-web -f src/SaneTui.Web/Dockerfile .
@@ -58,6 +63,8 @@ podman run --rm --device /dev/bus/usb -p 8080:8080 -e Web__Password=change-me -v
 ```
 
 Without a container: `Web__Password=change-me dotnet run --project src/SaneTui.Web`.
+
+**Naming.** With the `Naming__` settings, the page can suggest a title and a date for the document: Tesseract reads the text of the first pages, and a language model (through `Microsoft.Extensions.AI`, using the OpenAI library against the `/openai/v1/` endpoint that Azure OpenAI and Foundry both serve) answers with a title and the date the document carries. Only the text goes to the model, not the page pictures. The title and date box names the downloaded PDF (`2024-03-01 Electric bill.pdf`), and can be typed in by hand without any of this being set up. "Suggest a name" asks on demand, and "After each scan" does it when a scan finishes, unless something has been typed.
 
 ## Tests
 

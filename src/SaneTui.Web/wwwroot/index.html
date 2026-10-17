@@ -63,6 +63,14 @@
 	<section id="document" aria-label="Document">
 		<h2>Document <span id="pageCount"></span></h2>
 		<div id="strip"></div>
+		<div id="naming">
+			<label>Title <input id="title" type="text" maxlength="100" autocomplete="off"></label>
+			<label>Date <input id="docDate" type="date"></label>
+			<span id="suggestControls" hidden>
+				<button id="suggest" type="button">Suggest a name</button>
+				<label><input type="checkbox" id="autoName"> After each scan</label>
+			</span>
+		</div>
 		<div class="buttons">
 			<a id="pdf" class="button" href="api/document.pdf" hidden>Download PDF</a>
 			<button id="discard" type="button" hidden>Discard document</button>

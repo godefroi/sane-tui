@@ -136,3 +136,9 @@ dialog { width: min(720px, 92vw); background: var(--panel); color: var(--text); 
 	main { grid-template-columns: 1fr; }
 	#stage { height: 55vh; }
 }
+
+#naming { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 8px 0; }
+#naming label { margin: 0; }
+#naming input[type=text] { width: min(360px, 80vw); }
+#naming input[type=text], #naming input[type=date] { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+#suggestControls { display: flex; gap: 12px; align-items: center; }

@@ -16,4 +16,9 @@
     <InternalsVisibleTo Include="SaneTui.Web.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.11.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.11.0" />
+  </ItemGroup>
+
 </Project>

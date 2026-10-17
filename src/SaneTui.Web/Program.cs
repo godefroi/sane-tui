@@ -12,6 +12,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<WebOptions>(builder.Configuration.GetSection("Web"));
 builder.Services.AddSingleton<DocumentStore>();
 builder.Services.AddSingleton<ScannerService>();
+builder.Services.Configure<NamingOptions>(builder.Configuration.GetSection("Naming"));
+builder.Services.AddSingleton<Tesseract>();
+builder.Services.AddSingleton<NameSuggester>();
 
 var app = builder.Build();
 var web = app.Services.GetRequiredService<IOptions<WebOptions>>().Value;
@@ -28,6 +31,7 @@ app.UseExceptionHandler(errors => errors.Run(async context => {
 		BusyException => (StatusCodes.Status409Conflict, error.Message),
 		CommandException => (StatusCodes.Status400BadRequest, error.Message),
 		SaneException => (StatusCodes.Status502BadGateway, error.Message),
+		NamingException => (StatusCodes.Status502BadGateway, error.Message),
 		_ => (StatusCodes.Status500InternalServerError, "Something unexpected went wrong."),
 	};
 
@@ -151,7 +155,8 @@ api.MapDelete("/document", (DocumentStore documents, ScannerService scanner) => 
 	return Results.NoContent();
 });
 
-api.MapGet("/document.pdf", async (DocumentStore documents) => {
+// the title and date, if given, make the file's name; the browser saves it under that
+api.MapGet("/document.pdf", async (DocumentStore documents, string? title, string? date) => {
 	var pages = documents.PagePaths();
 
 	if (pages.Count == 0) {
@@ -159,8 +164,30 @@ api.MapGet("/document.pdf", async (DocumentStore documents) => {
 	}
 
 	var stream = await Task.Run(() => PdfBuilder.Build(pages));
+	DateOnly? day = DateOnly.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsed) ? parsed : null;
 
-	return Results.File(stream, "application/pdf", $"scan-{DateTime.Now:yyyyMMdd-HHmmss}.pdf");
+	return Results.File(stream, "application/pdf", DocumentNames.PdfFileName(title, day, DateTime.Now));
+});
+
+// what the page can offer, which depends on how the service was set up
+api.MapGet("/config", (NameSuggester names) => new { naming = names.Available });
+
+// Reads the first pages' text and asks the language model for a title and date. Slow (seconds), so it's a plain request that
+// the page waits for; it doesn't use the scanner and doesn't block one.
+api.MapPost("/document/name", async (DocumentStore documents, NameSuggester names, CancellationToken cancellationToken) => {
+	if (!names.Available) {
+		return Results.Json(new { error = "Suggesting names isn't set up on this service." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+	}
+
+	var pages = documents.PagePaths();
+
+	if (pages.Count == 0) {
+		return Results.NotFound();
+	}
+
+	var suggestion = await names.SuggestAsync(pages, cancellationToken);
+
+	return Results.Ok(new { title = suggestion.Title, date = suggestion.Date?.ToString("yyyy-MM-dd") });
 });
 
 app.Run();
