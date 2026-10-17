@@ -5,11 +5,26 @@ public class PatientlyTests
 	[Test]
 	public async Task SlowStep_SaysWhatItIsWaitingFor()
 	{
-		var log = new StringWriter();
+		var inner = new StringWriter();
+		var log = TextWriter.Synchronized(inner);
 
-		await ScanCommand.Patiently("Closing...", async () => await Task.Delay(300), log, after: TimeSpan.FromMilliseconds(50));
+		// The step lasts until the notice has appeared (or ten seconds have gone), however slowly this machine runs the timer: the
+		// test is that a slow step is announced, not how fast a loaded CI runner gets to it.
+		await ScanCommand.Patiently("Closing...", async () => {
+			for (var i = 0; i < 1000 && !Said(log, inner); i++) {
+				await Task.Delay(10);
+			}
+		}, log, after: TimeSpan.FromMilliseconds(50));
 
-		await Assert.That(log.ToString()).Contains("Closing...");
+		await Assert.That(inner.ToString()).Contains("Closing...");
+	}
+
+	// the notice is written from another thread, so reading is done under the same lock the synchronized writer uses
+	private static bool Said(TextWriter log, StringWriter inner)
+	{
+		lock (log) {
+			return inner.ToString().Contains("Closing...");
+		}
 	}
 
 	[Test]
