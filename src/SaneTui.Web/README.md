@@ -17,7 +17,7 @@ The service owns the scanner. There is one operation at a time (a second request
 From the container image (a release publishes it for amd64 and arm64):
 
 ```sh
-podman run --rm --device /dev/bus/usb -p 8080:8080 -e Web__Password=change-me -v sane-tui-data:/data ghcr.io/godefroi/sane-tui-web:latest
+podman run --rm --device /dev/bus/usb --group-add keep-groups -p 8080:8080 -e Web__Password=change-me -v sane-tui-data:/data ghcr.io/godefroi/sane-tui-web:latest
 ```
 
 Then open <http://localhost:8080/>; the user name is `scan`. The image is built from [`Dockerfile`](Dockerfile) in this folder, from the root of the repository:
@@ -28,7 +28,10 @@ podman build -t sane-tui-web -f src/SaneTui.Web/Dockerfile .
 
 Without a container (needs `libsane1` and, for naming, `tesseract-ocr`): `Web__Password=change-me dotnet run --project src/SaneTui.Web`.
 
-**The scanner has to be visible inside the container.** `--device /dev/bus/usb` passes the USB bus through. The device nodes are captured when the container starts, so if the scanner is unplugged, switched off or re-enumerates, restart the container. The program runs as root in the image, because opening a USB device needs it unless the host sets up permissions.
+**The scanner has to be visible, and openable, inside the container.**
+- `--device /dev/bus/usb` passes the USB bus through. The device nodes are captured when the container starts, so if the scanner is unplugged, switched off or re-enumerates, restart the container.
+- The nodes are usually owned by a group such as `scanner`. With rootless Podman the container's root is you, so the program can open them only if the container keeps your groups, which is what `--group-add keep-groups` does (without it, a test container got "Permission denied"). Run as a user in that group.
+- On a host with SELinux enforcing, the setup this was developed on also ran with `--security-opt label=disable`. Opening the device nodes worked without it in a test, but libusb does more than open them and that wasn't tried.
 
 ## Settings
 

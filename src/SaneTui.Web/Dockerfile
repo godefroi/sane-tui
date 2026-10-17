@@ -1,7 +1,7 @@
 # The scanner web UI. Build from the repository root:
 #   podman build -t sane-tui-web -f src/SaneTui.Web/Dockerfile .
 # Run it with a password and the scanner's USB bus (see the README):
-#   podman run --rm --device /dev/bus/usb -p 8080:8080 -e Web__Password=... -v sane-tui-data:/data sane-tui-web
+#   podman run --rm --device /dev/bus/usb --group-add keep-groups -p 8080:8080 -e Web__Password=... -v sane-tui-data:/data sane-tui-web
 
 # the build runs on the machine doing the building whatever the image is for (the published program is the same for every
 # architecture), so building for arm64 does not mean compiling under emulation
