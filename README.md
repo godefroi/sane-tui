@@ -9,6 +9,7 @@ Status: early. The library can enumerate devices, open them, read and set option
 | Path | What |
 |------|------|
 | `src/SaneTui.Sane` | The SANE library (`SaneLibrary`, `SaneDevice`, `SaneOption`). P/Invoke to `libsane.so.1`, no other dependencies. |
+| `src/SaneTui.Core` | What the front ends share on top of the library: scan requests and option setup, the preview scan, JPEG writing (Magick.NET), page sizes, resolution presets, output-file naming. |
 | `src/SaneTui` | The `sane-tui` executable: a Terminal.Gui interface (the default command), and the `diag`, `scan` and `dump` commands. |
 | `tests/SaneTui.Sane.Tests` | TUnit tests (Microsoft.Testing.Platform) against SANE's virtual `test` backend. |
 
