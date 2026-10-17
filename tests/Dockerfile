@@ -9,6 +9,8 @@ COPY src/SaneTui.Core/SaneTui.Core.csproj src/SaneTui.Core/
 COPY src/SaneTui/SaneTui.csproj src/SaneTui/
 COPY tests/SaneTui.Sane.Tests/SaneTui.Sane.Tests.csproj tests/SaneTui.Sane.Tests/
 COPY tests/SaneTui.Tests/SaneTui.Tests.csproj tests/SaneTui.Tests/
+COPY src/SaneTui.Web/SaneTui.Web.csproj src/SaneTui.Web/
+COPY tests/SaneTui.Web.Tests/SaneTui.Web.Tests.csproj tests/SaneTui.Web.Tests/
 RUN dotnet restore
 COPY . .
 RUN dotnet build --no-restore

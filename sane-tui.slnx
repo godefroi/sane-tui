@@ -2,10 +2,12 @@
   <Folder Name="/src/">
     <Project Path="src/SaneTui.Sane/SaneTui.Sane.csproj" />
     <Project Path="src/SaneTui.Core/SaneTui.Core.csproj" />
+    <Project Path="src/SaneTui.Web/SaneTui.Web.csproj" />
     <Project Path="src/SaneTui/SaneTui.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SaneTui.Sane.Tests/SaneTui.Sane.Tests.csproj" />
     <Project Path="tests/SaneTui.Tests/SaneTui.Tests.csproj" />
+    <Project Path="tests/SaneTui.Web.Tests/SaneTui.Web.Tests.csproj" />
   </Folder>
 </Solution>

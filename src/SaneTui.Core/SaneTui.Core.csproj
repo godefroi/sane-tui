@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="sane-tui" />
+    <InternalsVisibleTo Include="SaneTui.Web" />
     <InternalsVisibleTo Include="SaneTui.Tests" />
   </ItemGroup>
 
