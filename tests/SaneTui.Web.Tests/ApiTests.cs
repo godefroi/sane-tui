@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using ImageMagick;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SaneTui.Web.Tests;
 
@@ -58,6 +59,37 @@ public class ApiTests
 
 		await Assert.That(state.GetProperty("status").GetString()).IsEqualTo("idle");
 		await Assert.That(state.GetProperty("log").GetArrayLength()).IsEqualTo(0);
+	}
+
+	[Test]
+	public async Task OpenEventStreams_EndWhenTheServiceIsToldToStop()
+	{
+		using var app = new AppFactory();
+		using var client = app.SignedIn();
+		using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+		using var response = await client.GetAsync("/api/events", HttpCompletionOption.ResponseHeadersRead, cancel.Token);
+		using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cancel.Token));
+
+		await reader.ReadLineAsync(cancel.Token); // connected, and given the state
+
+		// a stream that never ends would keep a real host waiting out its whole shutdown timeout, so a stop seemed to hang
+		app.Services.GetRequiredService<Microsoft.Extensions.Hosting.IHostApplicationLifetime>().StopApplication();
+
+		var ended = false;
+
+		try {
+			using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token);
+
+			wait.CancelAfter(TimeSpan.FromSeconds(5));
+
+			while (await reader.ReadLineAsync(wait.Token) is not null) {
+			}
+
+			ended = true;
+		} catch (OperationCanceledException) {
+		}
+
+		await Assert.That(ended).IsTrue();
 	}
 
 	[Test]

@@ -62,18 +62,22 @@ api.MapGet("/state", (ScannerService scanner) => scanner.GetSnapshot());
 
 // Server-sent events: the whole state on connect and after every change. Browsers reconnect by themselves, and a reconnect gets
 // a fresh snapshot, so there's nothing to replay. (No heartbeat: an idle connection a proxy drops is simply reconnected.)
-api.MapGet("/events", async (HttpContext context, ScannerService scanner, IOptions<JsonOptions> json, CancellationToken cancellationToken) => {
+// An event stream never ends by itself, so on shutdown the host would wait out its whole timeout (30 seconds) for every open
+// page to go away: a Ctrl-C or a stop would seem to hang. They're ended when the host starts to stop, and a browser reconnects.
+api.MapGet("/events", async (HttpContext context, ScannerService scanner, IOptions<JsonOptions> json, IHostApplicationLifetime lifetime, CancellationToken cancellationToken) => {
 	context.Response.Headers.ContentType = "text/event-stream";
 	context.Response.Headers.CacheControl = "no-cache";
 	context.Response.Headers["X-Accel-Buffering"] = "no";
 
+	using var open = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.ApplicationStopping);
+
 	try {
-		await foreach (var snapshot in scanner.WatchAsync(cancellationToken)) {
-			await context.Response.WriteAsync($"data: {JsonSerializer.Serialize(snapshot, json.Value.SerializerOptions)}\n\n", cancellationToken);
-			await context.Response.Body.FlushAsync(cancellationToken);
+		await foreach (var snapshot in scanner.WatchAsync(open.Token)) {
+			await context.Response.WriteAsync($"data: {JsonSerializer.Serialize(snapshot, json.Value.SerializerOptions)}\n\n", open.Token);
+			await context.Response.Body.FlushAsync(open.Token);
 		}
 	} catch (OperationCanceledException) {
-		// the browser went away
+		// the browser went away, or the service is stopping
 	}
 });
 
