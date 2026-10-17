@@ -65,6 +65,8 @@ Console.WriteLine(string.Join(", ", mode.StringList ?? []));
 await device.SetAsync(mode, "Color");
 ```
 
+Backends also differ in how they express the same logical option: its unit (`SaneOption.Unit` says millimeters, pixels, dots per inch and so on) and whether it's an integer or a fixed-point number (fixed-point values come to you as `double`). The library reports what the driver says and doesn't convert one unit into another for you; `SetScanAreaAsync` is the exception, and it only works on a scanner whose area options are in millimeters.
+
 Setting an option can change others (switching to a document feeder changes which areas and resolutions are allowed), and the driver may adjust the value you gave it. `device.Options` is replaced after every change, so an option record you're holding is a snapshot: look it up again with `GetOption` to see the outcome.
 
 `SetScanAreaAsync(width, height, x, y)` picks the part of the scanner to scan, in millimeters from the top-left corner. It works through the standard `tl-x`, `tl-y`, `br-x` and `br-y` options and cuts an area that is too big down to fit, so you can ask any scanner for a paper size. Set the source first, because the available area can depend on it. `SetAutoAsync` lets the driver choose a value, and `PressAsync` presses a button option.

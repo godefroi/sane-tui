@@ -49,7 +49,7 @@ jobs:
           dotnet-version: 10.0.x
 
       # One file, with the .NET runtime inside: nothing to install but SANE itself (libsane1, which a scanner needs anyway).
-      # The native pieces (Magick.NET) are unpacked next to it the first time it runs.
+      # The native pieces (Magick.NET) are unpacked into a cache folder the first time it runs.
       - name: Publish
         env:
           VERSION: ${{ needs.version.outputs.version }}
@@ -88,8 +88,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      # The tags come from the git tag: v1.2.3 gives 1.2.3, 1.2, 1 and latest. The action leaves the moving tags off a pre-release
-      # (v1.2.3-rc.1 gives only 1.2.3-rc.1) and the major number off a 0.x release.
+      # The tags come from the git tag: v1.2.3 should give 1.2.3, 1.2, 1 and latest for a full release, and a pre-release (v1.2.3-rc.1) gets only
+      # its own tag, as the release candidates did.
       - id: meta
         uses: docker/metadata-action@v6
         with:
