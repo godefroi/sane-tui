@@ -70,6 +70,12 @@ function fill(select, values, selected, label = v => v) {
 	}
 }
 
+// What's chosen in the source or mode dropdown, or null when the scanner doesn't offer one: then the dropdown (which is
+// hidden along with its label) is empty, and its empty value must not be sent as if it were a choice.
+function chosen(id) {
+	return $(`${id}Label`).hidden ? null : $(id).value || null;
+}
+
 const capitalized = text => text.charAt(0).toUpperCase() + text.slice(1);
 
 // ---- scanners and what they offer
@@ -165,7 +171,7 @@ const changedSwitches = () => [...document.querySelectorAll('#switches input')]
 
 // a feeder feeds sheets by itself, so scanning everything in it is the sensible default; a preview is of a bed you can lay something on
 function updateForSource() {
-	const feeder = caps !== null && caps.feeders.includes($('source').value);
+	const feeder = caps !== null && caps.feeders.includes(chosen('source'));
 
 	$('allPagesLabel').hidden = !feeder;
 	$('allPages').checked = feeder;
@@ -634,8 +640,8 @@ function scanRequest() {
 	const paper = $('paper').value;
 	const request = {
 		device: $('device').value,
-		source: $('source').hidden ? null : $('source').value,
-		mode: $('mode').hidden ? null : $('mode').value,
+		source: chosen('source'),
+		mode: chosen('mode'),
 		resolution: Number($('resolution').value),
 		allPages: !$('allPagesLabel').hidden && $('allPages').checked,
 		rotate180: rotated(),
@@ -673,7 +679,7 @@ function wire() {
 		}
 	});
 
-	$('preview').addEventListener('click', () => command('api/preview', { device: $('device').value, source: $('source').hidden ? null : $('source').value }));
+	$('preview').addEventListener('click', () => command('api/preview', { device: $('device').value, source: chosen('source') }));
 	$('scan').addEventListener('click', () => command('api/scan', scanRequest()));
 	$('cancel').addEventListener('click', () => command('api/cancel'));
 	$('showLog').addEventListener('click', () => { $('logDialog').showModal(); });

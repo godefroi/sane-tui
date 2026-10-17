@@ -221,4 +221,25 @@ public class ApiTests
 		await Assert.That(state.GetProperty("document").GetProperty("pages").GetArrayLength()).IsEqualTo(1);
 		await Assert.That(state.GetProperty("log").EnumerateArray().Any(l => l.GetProperty("error").GetBoolean())).IsFalse();
 	}
+
+	[Test]
+	public async Task ABlankSourceOrMode_MeansLeaveItAlone()
+	{
+		RequireLibsane();
+
+		using var app = new AppFactory();
+		using var client = app.SignedIn();
+
+		// a scanner with no choice of source has an empty dropdown, which a page can send as ""
+		await Assert.That((await Scan(client, new { device = "test", source = "", mode = "  ", resolution = 50 })).StatusCode).IsEqualTo(HttpStatusCode.Accepted);
+
+		var state = await WaitUntilIdleAsync(client);
+
+		await Assert.That(state.GetProperty("document").GetProperty("pages").GetArrayLength()).IsEqualTo(1);
+		await Assert.That(state.GetProperty("log").EnumerateArray().Any(l => l.GetProperty("error").GetBoolean())).IsFalse();
+
+		await client.PostAsJsonAsync("/api/preview", new { device = "test", source = "" });
+
+		await Assert.That((await WaitUntilIdleAsync(client)).GetProperty("log").EnumerateArray().Any(l => l.GetProperty("error").GetBoolean())).IsFalse();
+	}
 }

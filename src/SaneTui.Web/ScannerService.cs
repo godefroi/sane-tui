@@ -142,7 +142,7 @@ internal sealed class ScannerService(DocumentStore documents) : IAsyncDisposable
 
 		operation.Task = Task.Run(() => RunAsync(operation, "Preview", async () => {
 			var sane = await GetLibraryAsync();
-			var result = await PreviewScan.RunAsync(sane, request.Device, request.Source, Reporter(operation), operation.Token);
+			var result = await PreviewScan.RunAsync(sane, request.Device, NullIfBlank(request.Source), Reporter(operation), operation.Token);
 
 			using var magick = ImageWriter.ToMagick(result.Image);
 
@@ -165,12 +165,16 @@ internal sealed class ScannerService(DocumentStore documents) : IAsyncDisposable
 	/// <exception cref="CommandException">The request makes no sense, for example a paper size together with an area.</exception>
 	public void StartScan(ScanJobRequest job)
 	{
-		var request = new ScanRequest(job.Device, "", job.Source, job.Mode, null, job.Resolution, job.Width, job.Height, job.AllPages, null, job.Settings ?? [], job.Paper, ExistingFiles.Fail, job.Left ?? 0, job.Top ?? 0, job.Rotate180, job.Deskew, job.Trim);
+		var request = new ScanRequest(job.Device, "", NullIfBlank(job.Source), NullIfBlank(job.Mode), null, job.Resolution, job.Width, job.Height, job.AllPages, null, job.Settings ?? [], job.Paper, ExistingFiles.Fail, job.Left ?? 0, job.Top ?? 0, job.Rotate180, job.Deskew, job.Trim);
 		var (width, height) = ScanSetup.RequestedSize(request);
 		var operation = Begin("scanning");
 
 		operation.Task = Task.Run(() => RunAsync(operation, "Scan", () => ScanAsync(operation, request, width, height)));
 	}
+
+	// A scanner that has no choice of source (or mode) has nothing to set, and a page can end up sending an empty string for it.
+	// Setting an option to "" would fail, so it's taken to mean "leave it".
+	private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
 	public void Cancel()
 	{
