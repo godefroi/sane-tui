@@ -15,7 +15,7 @@ namespace SaneTui.Web.Tests;
 
 public class NamingTests
 {
-	private const string ModelAnswer = """{"Title":"Electric bill from Pacific Power","DocumentDate":"2024-03-01"}""";
+	private const string ModelAnswer = """{"title":"Electric bill from Pacific Power","documentDate":"2024-03-01"}""";
 
 	private sealed class FakeTesseract(string text) : Tesseract(Options.Create(new NamingOptions()))
 	{
@@ -134,7 +134,7 @@ public class NamingTests
 		var service = new FakeService("this is not json");
 		var suggester = new NameSuggester(Options.Create(Configured()), new FakeTesseract("some text"), ClientFor(service));
 
-		await Assert.ThrowsAsync<NamingException>(async () => await suggester.SuggestAsync(["page.jpg"], CancellationToken.None));
+		await Assert.ThrowsAsync<NamingException>(async () => await suggester.SuggestAsync(["page.jpg"], null, CancellationToken.None));
 	}
 
 	[Test]
@@ -154,15 +154,18 @@ public class NamingTests
 		var service = new FakeService(ModelAnswer);
 		var suggester = new NameSuggester(Options.Create(Configured()), new FakeTesseract("PACIFIC POWER statement 03/01/2024 amount due $52.10"), ClientFor(service));
 
-		var suggestion = await suggester.SuggestAsync(["page.jpg"], CancellationToken.None);
+		var suggestion = await suggester.SuggestAsync(["page.jpg"], null, CancellationToken.None);
 
-		await Assert.That(suggestion).IsEqualTo(new NameSuggestion("Electric bill from Pacific Power", new DateOnly(2024, 3, 1)));
+		await Assert.That(suggestion.Title).IsEqualTo("Electric bill from Pacific Power");
+		await Assert.That(suggestion.Date).IsEqualTo(new DateOnly(2024, 3, 1));
+		await Assert.That(suggestion.Correspondent).IsNull();
+		await Assert.That(suggestion.DocumentType).IsNull();
 		await Assert.That(service.Url).IsEqualTo("https://example.test/openai/v1/chat/completions");
 		await Assert.That(service.Authorization).IsEqualTo("Bearer the-key");
 		await Assert.That(service.Body).Contains("PACIFIC POWER statement");
 		await Assert.That(service.Body).Contains("\"model\":\"the-model\"");
 		await Assert.That(service.Body).Contains("json_schema");
-		await Assert.That(service.Body).Contains("documentDate"); // the schema comes from the answer's type
+		await Assert.That(service.Body).Contains("documentDate"); // the shape the model has to answer in
 	}
 
 	[Test]
@@ -171,7 +174,7 @@ public class NamingTests
 		var service = new FakeService(ModelAnswer);
 		var suggester = new NameSuggester(Options.Create(Configured()), new FakeTesseract("  \n "), ClientFor(service));
 
-		var suggestion = await suggester.SuggestAsync(["page.jpg"], CancellationToken.None);
+		var suggestion = await suggester.SuggestAsync(["page.jpg"], null, CancellationToken.None);
 
 		await Assert.That(suggestion.Title).IsEqualTo("");
 		await Assert.That(service.Body).IsNull();
@@ -182,7 +185,7 @@ public class NamingTests
 	{
 		var suggester = new NameSuggester(Options.Create(new NamingOptions()), new FakeTesseract("text"));
 
-		var error = await Assert.ThrowsAsync<NamingException>(async () => await suggester.SuggestAsync(["page.jpg"], CancellationToken.None));
+		var error = await Assert.ThrowsAsync<NamingException>(async () => await suggester.SuggestAsync(["page.jpg"], null, CancellationToken.None));
 
 		await Assert.That(error!.Message).Contains("Naming__Endpoint");
 	}
@@ -195,8 +198,8 @@ public class NamingTests
 		using var offClient = off.SignedIn();
 		using var onClient = on.SignedIn();
 
-		await Assert.That(await offClient.GetStringAsync("/api/config")).IsEqualTo("""{"naming":false,"retentionDays":30}""");
-		await Assert.That(await onClient.GetStringAsync("/api/config")).IsEqualTo("""{"naming":true,"retentionDays":30}""");
+		await Assert.That(await offClient.GetStringAsync("/api/config")).IsEqualTo("""{"naming":false,"retentionDays":30,"paperless":false,"paperlessUrl":null}""");
+		await Assert.That(await onClient.GetStringAsync("/api/config")).IsEqualTo("""{"naming":true,"retentionDays":30,"paperless":false,"paperlessUrl":null}""");
 	}
 
 	[Test]

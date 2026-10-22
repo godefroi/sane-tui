@@ -68,15 +68,22 @@
 		<div id="naming">
 			<label>Title <input id="title" type="text" maxlength="100" autocomplete="off"></label>
 			<label>Date <input id="docDate" type="date"></label>
+			<span id="paperlessFields" hidden>
+				<label>Correspondent <select id="correspondent"></select></label>
+				<label>Document type <select id="documentType"></select></label>
+			</span>
 			<span id="suggestControls" hidden>
 				<button id="suggest" type="button">Suggest a name</button>
 				<label><input type="checkbox" id="autoName"> After each scan</label>
 			</span>
 		</div>
+		<p class="hint" id="suggestNote" hidden></p>
 		<div class="buttons">
 			<a id="pdf" class="button" href="api/document.pdf" hidden>Download PDF</a>
+			<button id="send" type="button" hidden>Send to Paperless</button>
 			<button id="discard" type="button" hidden>Discard document</button>
 		</div>
+		<p id="sendStatus" role="status" hidden></p>
 	</section>
 </main>
 

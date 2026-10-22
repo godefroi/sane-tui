@@ -36,7 +36,7 @@ internal sealed partial class DocumentStore
 	{
 		get {
 			lock (_lock) {
-				return _current is null ? null : new DocumentInfo(_current.Id, [.. _current.Pages]);
+				return _current is null ? null : new DocumentInfo(_current.Id, [.. _current.Pages], _current.Sent);
 			}
 		}
 	}
@@ -61,6 +61,7 @@ internal sealed partial class DocumentStore
 
 		lock (_lock) {
 			_current!.Pages.Add(page);
+			_current.Sent = null; // what was sent is no longer all of the document
 			Save(_current);
 		}
 
@@ -91,6 +92,22 @@ internal sealed partial class DocumentStore
 			}
 
 			File.Delete(FileFor(_current.Id, id));
+			_current.Sent = null;
+			Save(_current);
+
+			return true;
+		}
+	}
+
+	/// <summary>Records where sending the document to Paperless stands. Does nothing (and says so) if the document it's about is gone.</summary>
+	public bool SetSent(string documentId, SendInfo? sent)
+	{
+		lock (_lock) {
+			if (_current?.Id != documentId) {
+				return false;
+			}
+
+			_current.Sent = sent;
 			Save(_current);
 
 			return true;
@@ -196,5 +213,8 @@ internal sealed partial class DocumentStore
 		public int NextPage { get; set; } = 1;
 
 		public List<PageInfo> Pages { get; set; } = [];
+
+		/// <summary>Where the last send to Paperless stands. Cleared when the pages change.</summary>
+		public SendInfo? Sent { get; set; }
 	}
 }

@@ -535,11 +535,15 @@ function step(direction) {
 	}
 }
 
-// ---- naming the document
+// ---- naming the document, and sending it to Paperless
 
-// The title and date name the downloaded PDF. They can be typed, or suggested from the text of the first pages. Once the person
-// has typed in either, an automatic suggestion never overwrites it (the Suggest button, being asked for, always does).
+// The title and date name the downloaded PDF, and go to Paperless with a correspondent and a document type if one is chosen. They can
+// be typed and chosen, or suggested from the text of the first pages. Once the person has changed any of them, an automatic
+// suggestion never overwrites them (the Suggest button, being asked for, always does).
 let namingAvailable = false;
+let paperlessAvailable = false;
+let paperlessUrl = null;
+let sending = false;
 let suggesting = false;
 let touched = false;
 let previousStatus = 'idle';
@@ -565,6 +569,8 @@ function drawNaming() {
 	const text = query.toString();
 
 	$('pdf').href = `api/document.pdf${text ? `?${text}` : ''}`;
+
+	drawSend();
 }
 
 async function suggest(automatic) {
@@ -594,7 +600,32 @@ async function suggest(automatic) {
 
 		$('title').value = result.title;
 		$('docDate').value = result.date ?? '';
+
+		const notes = [];
+
+		// A correspondent or document type comes only when the service was certain. What it chose is put in the dropdown, after
+		// reading the lists again if Paperless has gained one since they were read.
+		for (const [id, found, label] of [['correspondent', result.correspondent, 'Correspondent'], ['documentType', result.documentType, 'Document type']]) {
+			if (!found) {
+				continue;
+			}
+
+			if (![...$(id).options].some(o => o.value === String(found.id))) {
+				await loadChoices();
+			}
+
+			$(id).value = String(found.id);
+			notes.push(found.evidence ? `${label} ${found.name}, because the document says "${found.evidence}".` : `${label} ${found.name}.`);
+		}
+
+		$('suggestNote').textContent = notes.join(' ');
+		$('suggestNote').hidden = notes.length === 0;
+
 		say(`Suggested: ${result.date ? `${result.date} ` : ''}${result.title}`);
+
+		if (result.paperlessProblem) {
+			say(`Suggested a title, but couldn't read Paperless's lists: ${result.paperlessProblem}`, true);
+		}
 	} catch (error) {
 		say(error.message, true);
 	} finally {
@@ -612,6 +643,14 @@ function updateNaming() {
 		touched = false;
 		$('title').value = '';
 		$('docDate').value = '';
+		$('correspondent').value = '';
+		$('documentType').value = '';
+		$('suggestNote').hidden = true;
+
+		// Paperless may have a new correspondent since they were read
+		if (paperlessAvailable && namedDocument !== null) {
+			loadChoices();
+		}
 	}
 
 	if (previousStatus === 'scanning' && snap.status === 'idle' && pages().length > 0 && $('autoName').checked && !touched) {
@@ -622,18 +661,128 @@ function updateNaming() {
 	drawNaming();
 }
 
+// the correspondents and document types Paperless has, for the two dropdowns; "(automatic)" sends none and leaves it to Paperless
+async function loadChoices() {
+	try {
+		const choices = await api('api/paperless/choices');
+
+		fillChoices($('correspondent'), choices.correspondents);
+		fillChoices($('documentType'), choices.documentTypes);
+	} catch (error) {
+		say(`Couldn't read Paperless's lists: ${error.message}`, true);
+	}
+}
+
+function fillChoices(select, items) {
+	const kept = select.value;
+
+	select.replaceChildren(new Option('(automatic)', ''), ...items.map(item => new Option(item.name, String(item.id))));
+	select.value = items.some(item => String(item.id) === kept) ? kept : '';
+}
+
+// the Send button, and how the last send stands (it's kept with the document, so every page and every visit shows the same)
+function drawSend() {
+	const sent = snap?.document?.sent ?? null;
+	const show = paperlessAvailable && pages().length > 0;
+	const consuming = sent?.status === 'consuming';
+	const note = $('sendStatus');
+
+	$('paperlessFields').hidden = !paperlessAvailable;
+	$('send').hidden = !show;
+	$('send').disabled = busy() || sending || consuming;
+	$('send').textContent = consuming ? 'Paperless is reading it...' : sent?.status === 'done' ? 'Send again' : 'Send to Paperless';
+
+	note.hidden = !show || sent === null;
+	note.classList.toggle('error', sent?.status === 'failed');
+
+	if (note.hidden) {
+		return;
+	}
+
+	note.replaceChildren();
+
+	if (sent.status === 'consuming') {
+		note.append('Paperless has it and is reading it.');
+	} else if (sent.status === 'done') {
+		note.append('Sent to Paperless');
+
+		if (sent.documentId !== null && paperlessUrl) {
+			const link = document.createElement('a');
+
+			link.href = `${paperlessUrl}documents/${sent.documentId}/details`;
+			link.target = '_blank';
+			link.rel = 'noopener';
+			link.textContent = `document ${sent.documentId}`;
+			note.append(' as ', link, '.');
+		} else {
+			note.append('.');
+		}
+	} else if (sent.status === 'failed') {
+		note.append(`Paperless couldn't use it: ${sent.message ?? 'no reason given'}`);
+	} else {
+		note.append(sent.message ?? "Paperless hasn't said how it went.");
+	}
+}
+
+async function send() {
+	if (sending) {
+		return;
+	}
+
+	const again = snap?.document?.sent?.status === 'done';
+
+	if (again && !confirm('This document was already sent to Paperless. Send it again? Paperless will have two copies.')) {
+		return;
+	}
+
+	sending = true;
+	drawSend();
+	say('Sending to Paperless...');
+
+	try {
+		await api('api/document/paperless', {
+			method: 'POST',
+			body: JSON.stringify({
+				title: $('title').value.trim() || null,
+				date: $('docDate').value || null,
+				correspondentId: Number($('correspondent').value) || null,
+				documentTypeId: Number($('documentType').value) || null,
+				again,
+			}),
+		});
+
+		say('Paperless has the document and is reading it.');
+	} catch (error) {
+		say(error.message, true);
+	} finally {
+		sending = false;
+		drawSend();
+	}
+}
+
 async function loadConfig() {
 	try {
 		const config = await api('api/config');
 
 		namingAvailable = config.naming;
 		retentionDays = config.retentionDays;
+		paperlessAvailable = config.paperless === true;
+		paperlessUrl = config.paperlessUrl ?? null;
 	} catch {
 		namingAvailable = false;
+		paperlessAvailable = false;
 	}
 
 	$('suggestControls').hidden = !namingAvailable;
 	$('autoName').checked = recall('autoName') !== 'false';
+
+	if (paperlessAvailable) {
+		await loadChoices();
+	}
+
+	if (snap) {
+		drawNaming();
+	}
 }
 
 // ---- zoom
@@ -866,8 +1015,9 @@ function wire() {
 		drawSwitches();
 	});
 	$('suggest').addEventListener('click', () => suggest(false));
+	$('send').addEventListener('click', send);
 	$('autoName').addEventListener('change', () => remember('autoName', String($('autoName').checked)));
-	for (const id of ['title', 'docDate']) {
+	for (const id of ['title', 'docDate', 'correspondent', 'documentType']) {
 		$(id).addEventListener('input', () => {
 			touched = true;
 			drawNaming();

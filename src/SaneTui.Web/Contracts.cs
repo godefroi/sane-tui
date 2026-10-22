@@ -9,7 +9,13 @@ internal sealed record LogLine(DateTimeOffset At, string Text, bool Error);
 
 internal sealed record PageInfo(string Id, int Width, int Height);
 
-internal sealed record DocumentInfo(string Id, IReadOnlyList<PageInfo> Pages);
+/// <summary>A document's trip to Paperless. Status is consuming (Paperless has it and is working), done, failed, or unknown (it never said).</summary>
+/// <param name="TaskId">Paperless's task for consuming it.</param>
+/// <param name="DocumentId">The document Paperless made, once it has.</param>
+/// <param name="Message">What went wrong, or what Paperless said.</param>
+internal sealed record SendInfo(string TaskId, string Status, int? DocumentId, string? Message, DateTimeOffset At);
+
+internal sealed record DocumentInfo(string Id, IReadOnlyList<PageInfo> Pages, SendInfo? Sent = null);
 
 /// <param name="Version">Changes with each new preview, so the browser doesn't show a cached one.</param>
 internal sealed record PreviewInfo(int Version, SaneScanArea Area, int PixelWidth, int PixelHeight, double? Dpi);

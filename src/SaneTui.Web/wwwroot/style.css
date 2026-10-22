@@ -156,3 +156,9 @@ html { scrollbar-gutter: stable; }
 body:has(dialog[open]) { overflow: hidden; }
 dialog { max-height: calc(100vh - 32px); overflow: auto; overscroll-behavior: contain; }
 #optionsList, #log { overscroll-behavior: contain; }
+
+#paperlessFields { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+#naming select { width: auto; max-width: 240px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+#sendStatus { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+#sendStatus.error { color: var(--error); }
+#suggestNote { margin: 4px 0 0; }

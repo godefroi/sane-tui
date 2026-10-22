@@ -18,6 +18,11 @@ builder.Services.AddHostedService<RetentionService>();
 builder.Services.Configure<NamingOptions>(builder.Configuration.GetSection("Naming"));
 builder.Services.AddSingleton<Tesseract>();
 builder.Services.AddSingleton<NameSuggester>();
+builder.Services.Configure<PaperlessOptions>(builder.Configuration.GetSection("Paperless"));
+builder.Services.AddSingleton(sp => PaperlessClient.Create(sp.GetRequiredService<IOptions<PaperlessOptions>>().Value, sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<SuggestionLog>();
+builder.Services.AddSingleton<PaperlessService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PaperlessService>());
 
 var app = builder.Build();
 var web = app.Services.GetRequiredService<IOptions<WebOptions>>().Value;
@@ -31,10 +36,10 @@ if (!web.AllowAnonymous && string.IsNullOrEmpty(web.Password)) {
 app.UseExceptionHandler(errors => errors.Run(async context => {
 	var error = context.Features.Get<IExceptionHandlerFeature>()?.Error;
 	var (status, message) = error switch {
-		BusyException => (StatusCodes.Status409Conflict, error.Message),
+		BusyException or ConflictException => (StatusCodes.Status409Conflict, error.Message),
 		CommandException => (StatusCodes.Status400BadRequest, error.Message),
 		SaneException => (StatusCodes.Status502BadGateway, error.Message),
-		NamingException => (StatusCodes.Status502BadGateway, error.Message),
+		NamingException or PaperlessException => (StatusCodes.Status502BadGateway, error.Message),
 		_ => (StatusCodes.Status500InternalServerError, "Something unexpected went wrong."),
 	};
 
@@ -177,24 +182,70 @@ api.MapGet("/document.pdf", async (DocumentStore documents, string? title, strin
 });
 
 // what the page can offer, which depends on how the service was set up
-api.MapGet("/config", (NameSuggester names, IOptions<WebOptions> web) => new { naming = names.Available, retentionDays = web.Value.RetentionDays });
+api.MapGet("/config", (NameSuggester names, IOptions<WebOptions> web, IOptions<PaperlessOptions> paperless) => new {
+	naming = names.Available,
+	retentionDays = web.Value.RetentionDays,
+	paperless = paperless.Value.Available,
+	paperlessUrl = paperless.Value.Available ? paperless.Value.LinkBase?.ToString() : null, // for links to a document, from the browser's side
+});
 
-// Reads the first pages' text and asks the language model for a title and date. Slow (seconds), so it's a plain request that
-// the page waits for; it doesn't use the scanner and doesn't block one.
-api.MapPost("/document/name", async (DocumentStore documents, NameSuggester names, CancellationToken cancellationToken) => {
+// the correspondents and document types Paperless has, for the page's dropdowns
+api.MapGet("/paperless/choices", async (PaperlessService paperless, CancellationToken cancellationToken) => {
+	if (!paperless.Available) {
+		return Results.Json(new { error = "Sending to Paperless isn't set up on this service." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+	}
+
+	var choices = await paperless.GetChoicesAsync(cancellationToken);
+
+	return Results.Ok(new { correspondents = choices.Correspondents, documentTypes = choices.DocumentTypes });
+});
+
+// Reads the first pages' text and asks the language model for a title and date, and, if Paperless is set up, a correspondent and a
+// document type from what it has. Slow (seconds), so it's a plain request that the page waits for; it doesn't use the scanner and
+// doesn't block one. If Paperless can't be asked, the title and date still come back, with the reason.
+api.MapPost("/document/name", async (DocumentStore documents, NameSuggester names, PaperlessService paperless, SuggestionLog log, ILogger<Program> logger, CancellationToken cancellationToken) => {
 	if (!names.Available) {
 		return Results.Json(new { error = "Suggesting names isn't set up on this service." }, statusCode: StatusCodes.Status503ServiceUnavailable);
 	}
 
 	var pages = documents.PagePaths();
 
-	if (pages.Count == 0) {
+	if (pages.Count == 0 || documents.Current is not { } document) {
 		return Results.NotFound();
 	}
 
-	var suggestion = await names.SuggestAsync(pages, cancellationToken);
+	PaperlessChoices? choices = null;
+	string? paperlessProblem = null;
 
-	return Results.Ok(new { title = suggestion.Title, date = suggestion.Date?.ToString("yyyy-MM-dd") });
+	if (paperless.Available) {
+		try {
+			choices = await paperless.GetChoicesAsync(cancellationToken);
+		} catch (PaperlessException ex) {
+			paperlessProblem = ex.Message;
+			logger.LogWarning("Couldn't read Paperless's lists, so no correspondent or document type is suggested: {Message}", ex.Message);
+		}
+	}
+
+	var suggestion = await names.SuggestAsync(pages, choices, cancellationToken);
+
+	log.Suggested(document.Id, suggestion);
+
+	return Results.Ok(new {
+		title = suggestion.Title,
+		date = suggestion.Date?.ToString("yyyy-MM-dd"),
+		correspondent = suggestion.Correspondent,
+		documentType = suggestion.DocumentType,
+		paperlessProblem,
+	});
+});
+
+// Sends the document to Paperless. Returns once Paperless has taken it; how it goes after that shows in the document's state.
+api.MapPost("/document/paperless", async (PaperlessService paperless, SendRequest request, CancellationToken cancellationToken) => {
+	if (!paperless.Available) {
+		return Results.Json(new { error = "Sending to Paperless isn't set up on this service." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+	}
+
+	return Results.Json(await paperless.SendAsync(request, cancellationToken), statusCode: StatusCodes.Status202Accepted);
 });
 
 app.Run();

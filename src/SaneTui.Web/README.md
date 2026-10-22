@@ -49,6 +49,9 @@ Set as environment variables (or in any other .NET configuration source; the dou
 | `Naming__Model` | The model to ask. On Azure and Foundry this is the name given to the deployment. |
 | `Naming__Languages` | Tesseract language codes for the text on the pages, joined with `+`. Default `eng`. Install the matching `tesseract-ocr-<language>` package in the image for others. |
 | `Naming__Pages` | How many pages, from the first, to read for text. Default 5. |
+| `Paperless__Url` | Where this service reaches Paperless-ngx (3.x), such as `http://paperless.local:8000`. With the token, turns on **Send to Paperless**. |
+| `Paperless__Token` | An API token for a Paperless user that may add documents and see correspondents and document types. |
+| `Paperless__PublicUrl` | Where your browser reaches Paperless, for the link to a sent document, if that differs from `Paperless__Url`. |
 
 ## Scanned pages
 
@@ -68,6 +71,16 @@ The model is reached through `Microsoft.Extensions.AI`, using the OpenAI library
 
 The title and date box names the downloaded PDF (`2024-03-01 Electric bill.pdf`), and works by hand without any of this being set up. **Suggest a name** asks on demand. **After each scan** asks when a scan finishes, and never overwrites something that has been typed. Whatever the title is, it is cleaned so it is safe as a file name.
 
+## Paperless
+
+With `Paperless__Url` and `Paperless__Token` set, **Send to Paperless** sits between **Download PDF** and **Discard document**. It uploads the PDF with the title, the date, and the correspondent and document type picked in the two lists (which are Paperless's own), then follows Paperless's consumption task and shows how it went, with a link to the document. The result is kept with the document, so a reload or a restart shows the same thing. Sending doesn't discard the document. Paperless 3 keeps duplicates unless it is set to refuse them (`PAPERLESS_CONSUMER_DELETE_DUPLICATES`), so sending twice makes two documents; the page asks before a second send.
+
+The model also suggests a correspondent and a document type from those lists, and suggests none unless it is certain. A name has to be exactly one on the list, and a correspondent also needs a short quote from the document that really appears in its text. Anything less leaves the box empty, for Paperless's own matching or for you. Lists over 1000 entries are not offered, and neither is a name that two entries share.
+
+What the model suggested, and what was sent, are logged to standard output, one JSON object per line, under the category `SaneTui.Suggestions` (events `suggested`, `sent` and `consumed`). The text of a document is never logged. In the container that is the container log; under Podman and journald, `journalctl CONTAINER_NAME=sane-tui-web | grep SaneTui.Suggestions` finds them.
+
+A container often can't resolve a `.local` name. If Paperless runs on the same host, `--add-host paperless.local:host-gateway` on `podman run` makes the name point at the host (and the published port is then the one to use in `Paperless__Url`).
+
 ## The API
 
 The page is a client of a small JSON API, which is also what the tests drive.
@@ -81,6 +94,7 @@ The page is a client of a small JSON API, which is also what the tests drive.
 | `POST /api/scan`, `POST /api/cancel` | Scan (the pages join the document), or stop what is running. |
 | `GET /api/pages/{id}[?w=]`, `DELETE /api/pages/{id}` | A page, or a thumbnail of it; delete it. |
 | `GET /api/document.pdf[?title=&date=]`, `DELETE /api/document` | The PDF, named from the title and date if given; discard the document. |
-| `GET /api/config`, `POST /api/document/name` | Whether naming is set up; suggest a title and date. |
+| `GET /api/config`, `POST /api/document/name` | Whether naming and Paperless are set up; suggest a title, date, correspondent and document type. |
+| `GET /api/paperless/choices`, `POST /api/document/paperless` | Paperless's correspondents and document types; send the document (`202`, then follow `sent` in the state). |
 
 A request for something the scanner is busy with gets `409`; one that makes no sense gets `400` with the reason.
